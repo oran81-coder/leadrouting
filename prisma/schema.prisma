@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Phase 1 persistence model (minimal, Cursor-friendly).
+// NOTE: SQLite connector does not support Prisma Json/enums in this setup.
+// All JSON payloads are stored as STRING containing JSON text.
+// Enum-like fields are stored as STRING with constrained values at the app layer.
+model InternalSchemaVersion {
+  id        String   @id @default(cuid())
+  orgId     String
+  version   Int
+  payload   String   // JSON string
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  @@unique([orgId, version])
+  @@index([orgId])
+}
+
+model FieldMappingConfigVersion {
+  id        String   @id @default(cuid())
+  orgId     String
+  version   Int
+  payload   String   // JSON string
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  @@unique([orgId, version])
+  @@index([orgId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  orgId       String
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  before      String?  // JSON string
+  after       String?  // JSON string
+  createdAt   DateTime @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+model RuleSetVersion {
+  id        String   @id @default(cuid())
+  orgId     String
+  version   Int
+  payload   String   // JSON string
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  @@unique([orgId, version])
+  @@index([orgId])
+}
+
+model RoutingState {
+  id             String   @id @default(cuid())
+  orgId          String   @unique
+  isEnabled      Boolean  @default(false)
+  enabledAt      DateTime?
+  enabledBy      String?
+  // snapshots of versions at time of enable
+  schemaVersion  Int?
+  mappingVersion Int?
+  rulesVersion   Int?
+  updatedAt      DateTime @updatedAt
+}
+
+model RoutingSettings {
+  id        String   @id @default(cuid())
+  orgId     String   @unique
+  // enum-like: "AUTO" | "MANUAL_APPROVAL"
+  mode      String   @default("MANUAL_APPROVAL")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RoutingProposal {
+  id              String   @id @default(cuid())
+  orgId           String
+  idempotencyKey  String
+  boardId         String
+  itemId          String
+  // enum-like: "PROPOSED" | "APPROVED" | "REJECTED" | "OVERRIDDEN" | "APPLIED"
+  status          String   @default("PROPOSED")
+
+  // snapshots (JSON strings)
+  normalizedValues String
+  selectedRule     String?
+  action           String? // RuleAction snapshot (JSON string)
+  explainability   String? // JSON string
+
+  // decision
+  decidedAt      DateTime?
+  decidedBy      String?
+  decisionNotes  String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([orgId, idempotencyKey])
+  @@index([orgId, status, createdAt])
+  @@index([orgId, boardId, itemId])
+}
+
+model RoutingApply {
+  id         String   @id @default(cuid())
+  orgId      String
+  proposalId String
+  appliedAt  DateTime @default(now())
+
+  @@unique([orgId, proposalId])
+  @@index([orgId, appliedAt])
+}
+
+model MondayUserCache {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String
+  name      String
+  email     String
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, userId])
+  @@index([orgId, email])
+  @@index([orgId, name])
+}
+
+model MondayCredential {
+  id        String   @id @default(cuid())
+  orgId     String   @unique
+  tokenEnc  String
+  endpoint  String   @default("https://api.monday.com/v2")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model IndustryWatchState {
+  id            String   @id @default(cuid())
+  orgId         String
+  boardId       String
+  itemId        String
+  lastIndustry  String?
+  lastCheckedAt DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([orgId, boardId, itemId])
+  @@index([orgId, boardId])
+}
+
+model MetricsConfig {
+  id    String @id @default(cuid())
+  orgId String @unique
+
+  // windows
+  conversionWindowDays Int @default(30)
+  avgDealWindowDays    Int @default(90)
+  responseWindowDays   Int @default(30)
+
+  // hot streak
+  hotStreakWindowHours Int @default(72)
+  hotStreakMinDeals    Int @default(1)
+
+  // burnout
+  burnoutWinDecayHours      Int @default(336) // 14 days
+  burnoutActivityDecayHours Int @default(168) // 7 days
+
+  // weights (must sum to 100)
+  weightIndustryPerf    Int @default(25)
+  weightConversion      Int @default(20)
+  weightAvgDeal         Int @default(15)
+  weightHotStreak       Int @default(10)
+  weightResponseSpeed   Int @default(15)
+  weightBurnout         Int @default(10)
+  weightAvailabilityCap Int @default(5)
+
+  // mappings (column ids + values)
+  leadBoardIds   String // comma separated
+  intakeColumnId String?
+  intakeValue    String?
+
+  contactedStatusColumnId String?
+  contactedStatusValue    String?
+
+  nextCallDateColumnId String?
+
+  closedWonStatusColumnId String?
+  closedWonStatusValue    String?
+
+  dealAmountColumnId String?
+  industryColumnId   String?
+
+  // feature toggles
+  enableIndustryPerf    Boolean @default(true)
+  enableConversion      Boolean @default(true)
+  enableAvgDealSize     Boolean @default(true)
+  enableHotStreak       Boolean @default(true)
+  enableResponseSpeed   Boolean @default(true)
+  enableBurnout         Boolean @default(true)
+  enableAvailabilityCap Boolean @default(true)
+
+  // assignment mapping
+  assignedPeopleColumnId String?
+
+  updatedAt DateTime @updatedAt
+}
+
+model LeadFact {
+  id      String @id @default(cuid())
+  orgId   String
+  boardId String
+  itemId  String
+
+  // Monday values (last seen)
+  assignedUserId String?
+  industry        String?
+  dealAmount      Float?
+  statusValue     String?
+  nextCallDate    String? // ISO date string (as text for simplicity)
+
+  // derived timestamps
+  enteredAt      DateTime? // when item was first seen in intake scope
+  firstTouchAt   DateTime? // min(contactedStatusChange, nextCallDateSet)
+  lastActivityAt DateTime? // last seen activity signal (status/date change)
+  closedWonAt    DateTime? // when status became closedWon
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, boardId, itemId])
+  @@index([orgId, boardId])
+  @@index([orgId, assignedUserId])
+}
+
+model AgentMetricsSnapshot {
+  id          String  @id @default(cuid())
+  orgId       String
+  agentUserId String
+  windowDays  Int
+  computedAt  DateTime @default(now())
+
+  assignedCount  Int   @default(0)
+  closedWonCount Int   @default(0)
+  conversionRate Float @default(0) // 0..1
+
+  avgDealSize    Float @default(0)
+  dealsAmountSum Float @default(0)
+
+  medianResponseMinutes Int @default(0)
+
+  hotDealsCount Int     @default(0)
+  isHot         Boolean @default(false)
+
+  hoursSinceLastWin      Int @default(999999)
+  hoursSinceLastActivity Int @default(999999)
+
+  burnoutScore Float @default(0) // 0..1 (higher is better)
+
+  industryPerfJson String @default("{}") // json string
+
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId, agentUserId])
+}
