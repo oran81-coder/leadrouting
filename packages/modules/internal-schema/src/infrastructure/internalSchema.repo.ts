@@ -4,7 +4,29 @@ import { getPrisma } from "../../../../core/src/db/prisma";
 export interface InternalSchemaRepo {
   getLatest(orgId: string): Promise<InternalSchema | null>;
   getByVersion(orgId: string, version: number): Promise<InternalSchema | null>;
-  saveNewVersion(orgId: string, schema: InternalSchema, createdBy?: string): Promise<{ version: number }>;
+  saveNewVersion(
+    orgId: string,
+    schema: InternalSchema,
+    createdBy?: string
+  ): Promise<{ version: number }>;
+}
+
+function safePayloadToSchema(value: unknown): InternalSchema | null {
+  // If DB column is String (expected), parse it
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as InternalSchema;
+    } catch {
+      return null;
+    }
+  }
+
+  // Safety: if somehow old data was stored as object (legacy/dev mishap)
+  if (value && typeof value === "object") {
+    return value as InternalSchema;
+  }
+
+  return null;
 }
 
 export class PrismaInternalSchemaRepo implements InternalSchemaRepo {
@@ -15,7 +37,8 @@ export class PrismaInternalSchemaRepo implements InternalSchemaRepo {
       orderBy: { version: "desc" },
     });
     if (!row) return null;
-    return row.payload as any as InternalSchema;
+
+    return safePayloadToSchema((row as any).payload);
   }
 
   async getByVersion(orgId: string, version: number): Promise<InternalSchema | null> {
@@ -24,10 +47,15 @@ export class PrismaInternalSchemaRepo implements InternalSchemaRepo {
       where: { orgId_version: { orgId, version } },
     });
     if (!row) return null;
-    return row.payload as any as InternalSchema;
+
+    return safePayloadToSchema((row as any).payload);
   }
 
-  async saveNewVersion(orgId: string, schema: InternalSchema, createdBy?: string): Promise<{ version: number }> {
+  async saveNewVersion(
+    orgId: string,
+    schema: InternalSchema,
+    createdBy?: string
+  ): Promise<{ version: number }> {
     const prisma = getPrisma();
 
     // Determine next version based on latest
@@ -49,7 +77,8 @@ export class PrismaInternalSchemaRepo implements InternalSchemaRepo {
       data: {
         orgId,
         version: nextVersion,
-        payload: payload as any,
+        // IMPORTANT: DB expects String
+        payload: JSON.stringify(payload),
         createdBy: createdBy ?? null,
       },
     });

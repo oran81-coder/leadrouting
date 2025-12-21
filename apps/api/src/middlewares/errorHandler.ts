@@ -1,15 +1,18 @@
 import type { Request, Response, NextFunction } from "express";
-import { AppError } from "../../../../packages/core/src/shared/errors";
 
-/**
- * Centralized error handler.
- * NOTE: Keep responses explicit & actionable (per PRD).
- */
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
-  if (err instanceof AppError) {
-    return res.status(err.statusCode).json({ error: err.code, message: err.message, details: err.details ?? null });
-  }
+export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
+  // Always log the real error to console for local dev
+  console.error("[errorHandler] Unhandled error:");
+  console.error(err?.stack ?? err);
 
-  // default
-  return res.status(500).json({ error: "INTERNAL_ERROR", message: "Unexpected error" });
+  // Prisma often stores info here:
+  if (err?.code) console.error("[errorHandler] code:", err.code);
+  if (err?.meta) console.error("[errorHandler] meta:", err.meta);
+
+  return res.status(500).json({
+    error: "INTERNAL_ERROR",
+    message: "Unexpected error",
+    // expose minimal details only in dev
+    details: process.env.NODE_ENV === "development" ? String(err?.message ?? err) : undefined,
+  });
 }

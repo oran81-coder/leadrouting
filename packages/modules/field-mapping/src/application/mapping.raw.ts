@@ -38,7 +38,10 @@ export function buildCompositeRawByInternalFieldId(
       continue;
     }
 
-    const cv = firstItem.column_values.find((c) => c.id === ref.columnId);
+    // column_values typing may vary across monday contracts; keep it safe
+    const columnValues = (firstItem as any).column_values as Array<{ id: string } & Record<string, any>> | undefined;
+    const cv = columnValues?.find((c) => c.id === ref.columnId);
+
     if (!cv) {
       raw[f.id] = null;
       continue;
@@ -48,7 +51,7 @@ export function buildCompositeRawByInternalFieldId(
     raw[f.id] = rawVal;
   }
 
-  ;return raw;
+  return raw;
 }
 
 export function indexSamples(samples: MondayBoardSample[]): Record<MondayBoardId, MondayItem[]> {
@@ -59,10 +62,13 @@ export function indexSamples(samples: MondayBoardSample[]): Record<MondayBoardId
 
 export function collectReferencedBoardIds(schema: InternalSchema, config: FieldMappingConfig): MondayBoardId[] {
   const ids = new Set<MondayBoardId>();
+
   for (const f of schema.fields) {
     if (!f.active) continue;
+
     const ref = config.mappings[f.id];
     if (ref?.boardId) ids.add(ref.boardId);
   }
+
   return Array.from(ids);
 }

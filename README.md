@@ -4,6 +4,10 @@ Stack: Node.js + TypeScript (Modular Monolith)
 Scope: Single org, deterministic rules, Monday.com only, no ML/NLP/telephony.
 
 ## Quick Start
+
+**For detailed smoke test with validation:** See [`docs/90_execution_and_prd/smoke-test.md`](docs/90_execution_and_prd/smoke-test.md)
+
+**Quick commands:**
 1. Install dependencies:
    ```bash
    npm install
@@ -12,11 +16,19 @@ Scope: Single org, deterministic rules, Monday.com only, no ML/NLP/telephony.
    ```bash
    cp .env.example .env
    ```
-3. Run API (dev):
+3. Generate Prisma client:
+   ```bash
+   npm run prisma:generate
+   ```
+4. Run migrations:
+   ```bash
+   npm run prisma:migrate
+   ```
+5. Run API (dev):
    ```bash
    npm run dev
    ```
-4. Health check:
+6. Health check:
    - GET http://localhost:3000/health -> {"ok": true}
 
 ## Repo Structure
