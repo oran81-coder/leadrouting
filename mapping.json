@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "updatedAt": "2025-12-21T00:00:00.000Z",
+  "mappings": {
+    "industry": {
+      "boardId": "mock_board_1",
+      "columnId": "industry_col",
+      "columnType": "status"
+    }
+  },
+  "fields": [
+    {
+      "id": "industry",
+      "label": "Industry",
+      "type": "text",
+      "required": false,
+      "isCore": true,
+      "isEnabled": true
+    }
+  ],
+  "writebackTargets": {
+    "assignedAgent": {
+      "boardId": "mock_board_1",
+      "columnId": "assigned_agent_col",
+      "columnType": "people"
+    }
+  }
+}
+

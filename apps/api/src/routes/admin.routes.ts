@@ -174,7 +174,16 @@ export function adminRoutes() {
     }
 
     const before = await routingStateRepo.get(ORG_ID);
-    const updated = await routingStateRepo.setEnabled(ORG_ID, true);
+    
+    await routingStateRepo.setEnabled({
+      orgId: ORG_ID,
+      enabled: true,
+      enabledBy: ACTOR_ID,
+      schemaVersion: (s as any).version,
+      mappingVersion: (m as any).version,
+    });
+
+    const updated = await routingStateRepo.get(ORG_ID);
 
     await auditRepo.log({
       orgId: ORG_ID,
@@ -191,7 +200,13 @@ export function adminRoutes() {
 
   r.post("/routing/disable", async (_req, res) => {
     const before = await routingStateRepo.get(ORG_ID);
-    const updated = await routingStateRepo.setEnabled(ORG_ID, false);
+    
+    await routingStateRepo.setEnabled({
+      orgId: ORG_ID,
+      enabled: false,
+    });
+
+    const updated = await routingStateRepo.get(ORG_ID);
 
     await auditRepo.log({
       orgId: ORG_ID,

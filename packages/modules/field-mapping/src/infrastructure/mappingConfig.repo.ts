@@ -7,6 +7,15 @@ export interface FieldMappingConfigRepo {
   saveNewVersion(orgId: string, config: FieldMappingConfig, createdBy?: string): Promise<{ version: number }>;
 }
 
+function safeJsonParse<T>(value: unknown): T | null {
+  if (typeof value !== "string") return null;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
 export class PrismaFieldMappingConfigRepo implements FieldMappingConfigRepo {
   async getLatest(orgId: string): Promise<FieldMappingConfig | null> {
     const prisma = getPrisma();
@@ -15,7 +24,10 @@ export class PrismaFieldMappingConfigRepo implements FieldMappingConfigRepo {
       orderBy: { version: "desc" },
     });
     if (!row) return null;
-    return row.payload as any as FieldMappingConfig;
+
+    // payload stored as STRING in DB
+    const parsed = safeJsonParse<FieldMappingConfig>((row as any).payload);
+    return parsed ?? null;
   }
 
   async getByVersion(orgId: string, version: number): Promise<FieldMappingConfig | null> {
@@ -24,7 +36,10 @@ export class PrismaFieldMappingConfigRepo implements FieldMappingConfigRepo {
       where: { orgId_version: { orgId, version } },
     });
     if (!row) return null;
-    return row.payload as any as FieldMappingConfig;
+
+    // payload stored as STRING in DB
+    const parsed = safeJsonParse<FieldMappingConfig>((row as any).payload);
+    return parsed ?? null;
   }
 
   async saveNewVersion(orgId: string, config: FieldMappingConfig, createdBy?: string): Promise<{ version: number }> {
@@ -47,7 +62,8 @@ export class PrismaFieldMappingConfigRepo implements FieldMappingConfigRepo {
       data: {
         orgId,
         version: nextVersion,
-        payload: payload as any,
+        // IMPORTANT: DB expects String
+        payload: JSON.stringify(payload),
         createdBy: createdBy ?? null,
       },
     });

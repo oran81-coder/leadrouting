@@ -1,0 +1,19 @@
+[
+  {
+    "boardId": "mock_board_1",
+    "items": [
+      {
+        "id": "item_1",
+        "column_values": [
+          {
+            "id": "industry_col",
+            "type": "status",
+            "text": "Healthcare",
+            "value": "{\"label\":\"Healthcare\"}"
+          }
+        ]
+      }
+    ]
+  }
+]
+
