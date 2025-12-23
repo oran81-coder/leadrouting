@@ -384,6 +384,111 @@ export function routingRoutes() {
 
       const evalResult = evaluateRuleSet(norm.values as any, rules as any);
 
+      // Phase 1.4: Check routing mode and branch accordingly
+      if (routingState?.isEnabled) {
+        const settings = await settingsRepo.get(ORG_ID);
+        
+        if (settings.mode === "MANUAL_APPROVAL") {
+          // MANUAL_APPROVAL: Create proposal
+          if (inputSource === "direct_lead") {
+            return res.status(400).json({
+              ok: false,
+              error: "MANUAL_APPROVAL mode requires item format with boardId and itemId. Use { item: {...} } or disable routing to use direct lead format."
+            });
+          }
+
+          const boardId = req.body.item?.boardId ?? "mock_board";
+          const idempotencyKey = `${boardId}_${itemId}_${(schema as any).version}_${(mapping as any).version}_${(rules as any).version}`;
+
+          const proposal = await proposalRepo.create({
+            orgId: ORG_ID,
+            idempotencyKey,
+            boardId,
+            itemId: itemId!,
+            normalizedValues: norm.values,
+            selectedRule: evalResult.selectedRule,
+            action: evalResult.selectedRule?.action,
+            explainability: evalResult.explains,
+          });
+
+          await safeAudit({
+            orgId: ORG_ID,
+            actorUserId: "system",
+            action: "routing.execute.manual_proposal_created",
+            entityType: "RoutingProposal",
+            entityId: proposal.id,
+            before: null,
+            after: { proposalId: proposal.id, idempotencyKey },
+          });
+
+          return res.json({
+            ok: true,
+            mode: "manual_approval",
+            proposalId: proposal.id,
+            proposalStatus: proposal.status,
+            matchedRuleId: evalResult.selectedRule?.id ?? null,
+            assignedTo: evalResult.selectedRule?.action?.value ?? null,
+            idempotent: proposal.status === "APPLIED",
+            effectiveVersions: {
+              schemaVersion: (schema as any).version,
+              mappingVersion: (mapping as any).version,
+              rulesVersion: (rules as any).version,
+              source: effectiveSource,
+            },
+          });
+
+        } else if (settings.mode === "AUTO") {
+          // AUTO: Simulate apply (writeback disabled in Phase 1.4)
+          if (inputSource === "direct_lead") {
+            return res.status(400).json({
+              ok: false,
+              error: "AUTO mode requires item format with boardId and itemId. Use { item: {...} } or disable routing to use direct lead format."
+            });
+          }
+
+          const boardId = req.body.item?.boardId ?? "mock_board";
+          const idempotencyKey = `${boardId}_${itemId}_${(schema as any).version}_${(mapping as any).version}_${(rules as any).version}`;
+
+          const guard = await applyRepo.tryBegin(ORG_ID, idempotencyKey);
+
+          await safeAudit({
+            orgId: ORG_ID,
+            actorUserId: "system",
+            action: "routing.execute.auto_applied",
+            entityType: "Lead",
+            entityId: itemId,
+            before: null,
+            after: { 
+              idempotencyKey, 
+              matched: evalResult.matched, 
+              assignedTo: evalResult.selectedRule?.action?.value,
+              idempotent: guard === "ALREADY"
+            },
+          });
+
+          return res.json({
+            ok: true,
+            mode: "auto",
+            applied: true,
+            matchedRuleId: evalResult.selectedRule?.id ?? null,
+            assignedTo: evalResult.selectedRule?.action?.value ?? null,
+            writeback: {
+              attempted: false,
+              reason: "disabled_in_phase1_4",
+              note: "Monday writeback will be enabled in Phase 1.5 after validation"
+            },
+            idempotent: guard === "ALREADY",
+            effectiveVersions: {
+              schemaVersion: (schema as any).version,
+              mappingVersion: (mapping as any).version,
+              rulesVersion: (rules as any).version,
+              source: effectiveSource,
+            },
+          });
+        }
+      }
+
+      // Phase 1.3 fallback: execute-lite mode (routing disabled or mode not configured)
       await safeAudit({
         orgId: ORG_ID,
         actorUserId: "system",

@@ -49,10 +49,10 @@ export class PrismaRoutingProposalRepo {
       update: {
         boardId: args.boardId,
         itemId: args.itemId,
-        normalizedValues: args.normalizedValues as any,
-        selectedRule: (args.selectedRule ?? null) as any,
-        action: (args.action ?? null) as any,
-        explainability: (args.explainability ?? null) as any,
+        normalizedValues: JSON.stringify(args.normalizedValues),
+        selectedRule: args.selectedRule ? JSON.stringify(args.selectedRule) : null,
+        action: args.action ? JSON.stringify(args.action) : null,
+        explainability: args.explainability ? JSON.stringify(args.explainability) : null,
         status: "PROPOSED" as any,
       },
       create: {
@@ -60,10 +60,10 @@ export class PrismaRoutingProposalRepo {
         idempotencyKey: args.idempotencyKey,
         boardId: args.boardId,
         itemId: args.itemId,
-        normalizedValues: args.normalizedValues as any,
-        selectedRule: (args.selectedRule ?? null) as any,
-        action: (args.action ?? null) as any,
-        explainability: (args.explainability ?? null) as any,
+        normalizedValues: JSON.stringify(args.normalizedValues),
+        selectedRule: args.selectedRule ? JSON.stringify(args.selectedRule) : null,
+        action: args.action ? JSON.stringify(args.action) : null,
+        explainability: args.explainability ? JSON.stringify(args.explainability) : null,
         status: "PROPOSED" as any,
       },
     });
@@ -75,6 +75,42 @@ export class PrismaRoutingProposalRepo {
     const prisma = getPrisma();
     const row = await prisma.routingProposal.findFirst({ where: { orgId, id } });
     return row ? this.toDto(row) : null;
+  }
+
+  async list(args: {
+    orgId: string;
+    status?: ProposalStatus;
+    cursor?: string;
+    limit: number;
+    boardId?: string;
+    itemId?: string;
+  }): Promise<{ items: RoutingProposal[]; nextCursor: string | null }> {
+    const prisma = getPrisma();
+    
+    const where: any = { orgId: args.orgId };
+    if (args.status) where.status = args.status;
+    if (args.boardId) where.boardId = args.boardId;
+    if (args.itemId) where.itemId = args.itemId;
+    if (args.cursor) {
+      where.createdAt = { lt: new Date(args.cursor) };
+    }
+
+    const rows = await prisma.routingProposal.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: args.limit + 1,
+    });
+
+    const hasMore = rows.length > args.limit;
+    const items = rows.slice(0, args.limit);
+    const nextCursor = hasMore && items.length > 0 
+      ? items[items.length - 1].createdAt.toISOString() 
+      : null;
+
+    return {
+      items: items.map(r => this.toDto(r)),
+      nextCursor,
+    };
   }
 
   async setDecision(args: {
@@ -112,10 +148,10 @@ export class PrismaRoutingProposalRepo {
       boardId: row.boardId,
       itemId: row.itemId,
       status: row.status,
-      normalizedValues: row.normalizedValues,
-      selectedRule: row.selectedRule ?? undefined,
-      action: row.action ?? undefined,
-      explainability: row.explainability ?? undefined,
+      normalizedValues: row.normalizedValues ? JSON.parse(row.normalizedValues) : null,
+      selectedRule: row.selectedRule ? JSON.parse(row.selectedRule) : undefined,
+      action: row.action ? JSON.parse(row.action) : undefined,
+      explainability: row.explainability ? JSON.parse(row.explainability) : undefined,
       decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
       decidedBy: row.decidedBy ?? null,
       decisionNotes: row.decisionNotes ?? null,

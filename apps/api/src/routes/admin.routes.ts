@@ -241,6 +241,41 @@ export function adminRoutes() {
   });
 
   // -------------------------
+  // Routing Settings (Phase 1.4)
+  // -------------------------
+  r.get("/routing/settings", async (_req, res) => {
+    const settings = await routingSettingsRepo.get(ORG_ID);
+    return res.json({ ok: true, mode: settings.mode });
+  });
+
+  r.post("/routing/settings", async (req, res) => {
+    const mode = req.body?.mode;
+    
+    if (!mode || (mode !== "AUTO" && mode !== "MANUAL_APPROVAL")) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Invalid mode. Must be AUTO or MANUAL_APPROVAL" 
+      });
+    }
+
+    const before = await routingSettingsRepo.get(ORG_ID);
+    await routingSettingsRepo.setMode(ORG_ID, mode as any);
+    const updated = await routingSettingsRepo.get(ORG_ID);
+
+    await safeAudit({
+      orgId: ORG_ID,
+      actorUserId: ACTOR_ID,
+      action: "routing.settings.setMode",
+      entityType: "RoutingSettings",
+      entityId: ORG_ID,
+      before: { mode: before.mode },
+      after: { mode: updated.mode },
+    });
+
+    return res.json({ ok: true, mode: updated.mode });
+  });
+
+  // -------------------------
   // Monday (Phase 1)
   // -------------------------
   r.post("/monday/users/refresh", async (_req, res) => {
