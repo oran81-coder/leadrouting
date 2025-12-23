@@ -140,6 +140,54 @@ export class PrismaRoutingProposalRepo {
     await prisma.routingProposal.update({ where: { id }, data: { status: "APPLIED" as any } });
   }
 
+  async list(args: {
+    orgId: string;
+    status?: ProposalStatus | "PENDING";
+    cursor?: string;
+    limit?: number;
+    boardId?: string;
+    itemId?: string;
+  }): Promise<{ items: RoutingProposal[]; nextCursor: string | null }> {
+    const prisma = getPrisma();
+    
+    // Build WHERE clause
+    const where: any = { orgId: args.orgId };
+    
+    // Handle special "PENDING" status filter
+    if (args.status === "PENDING") {
+      where.status = "PROPOSED";
+    } else if (args.status) {
+      where.status = args.status;
+    }
+    
+    if (args.boardId) {
+      where.boardId = args.boardId;
+    }
+    
+    if (args.itemId) {
+      where.itemId = args.itemId;
+    }
+    
+    // Cursor-based pagination
+    if (args.cursor) {
+      where.id = { lt: args.cursor };
+    }
+    
+    const limit = args.limit ?? 25;
+    
+    const rows = await prisma.routingProposal.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit + 1, // Fetch one extra to determine if there's a next page
+    });
+    
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit).map((r) => this.toDto(r));
+    const nextCursor = hasMore ? rows[limit - 1].id : null;
+    
+    return { items, nextCursor };
+  }
+
   private toDto(row: any): RoutingProposal {
     return {
       id: row.id,

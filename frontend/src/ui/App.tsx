@@ -20,6 +20,11 @@ import {
   type ManagerProposalDTO,
   previewRouting,
 } from "./api";
+import { OutcomesScreen } from "./OutcomesScreen";
+import { ManagerScreen } from "./ManagerScreen";
+import { AdminScreen } from "./AdminScreen";
+import { ThemeProvider, useTheme } from "./ThemeContext";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -27,6 +32,30 @@ type MondayStatusDTO = {
   endpoint?: string;
   tokenMasked?: string;
 };
+
+function ThemeToggleButton() {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <button
+      onClick={toggleTheme}
+      style={{
+        padding: "8px 12px",
+        borderRadius: "6px",
+        border: "1px solid #ddd",
+        background: theme === "dark" ? "#374151" : "#fff",
+        color: theme === "dark" ? "#fff" : "#000",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+      }}
+      title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+    >
+      {theme === "light" ? "🌙" : "☀️"}
+      {theme === "light" ? "Dark" : "Light"}
+    </button>
+  );
+}
 
 
 function AdminMetricsSetup() {
@@ -667,7 +696,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
                           String(c.id).toLowerCase().includes(q) ||
                           String(c.type).toLowerCase().includes(q)
                         );
-                      })})
+                      })
                       .map((c) => (
                         <tr key={c.id}>
                           <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{c.title}</td>
@@ -694,7 +723,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
 }
 
 export default function App() {
-  const [view, setView] = useState<"manager" | "admin">("admin");
+  const [view, setView] = useState<"manager" | "admin" | "outcomes">("admin");
 
   // global connection settings
   const [apiBase, setApiBase] = useState(getApiBase());
@@ -736,6 +765,17 @@ export default function App() {
   const [pickerColumns, setPickerColumns] = useState<Array<{ id: string; title: string; type: string }>>([]);
   const [pickerStatusLabels, setPickerStatusLabels] = useState<Array<{ key: string; label: string }>>([]);
   const [pickerErr, setPickerErr] = useState<string | null>(null);
+
+  // Global keyboard shortcuts
+  useKeyboardShortcuts({
+    "1": () => setView("admin"),
+    "2": () => setView("manager"),
+    "3": () => setView("outcomes"),
+    "r": () => {
+      if (view === "manager") refreshManager(true);
+      else if (view === "admin") refreshAdmin();
+    },
+  });
 
   function persistConnection() {
     localStorage.setItem("apiBase", apiBase);
@@ -904,12 +944,38 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
   return (
     <div style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button onClick={() => setView("admin")} disabled={view === "admin"}>
+        <button 
+          onClick={() => setView("admin")} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            view === "admin" 
+              ? "bg-blue-600 text-white" 
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+          }`}
+        >
           Admin
         </button>
-        <button onClick={() => setView("manager")} disabled={view === "manager"}>
+        <button 
+          onClick={() => setView("manager")} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            view === "manager" 
+              ? "bg-blue-600 text-white" 
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+          }`}
+        >
           Manager
         </button>
+        <button 
+          onClick={() => setView("outcomes")} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            view === "outcomes" 
+              ? "bg-blue-600 text-white" 
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+          }`}
+        >
+          Outcomes
+        </button>
+
+        <ThemeToggleButton />
 
         <div style={{ width: 1, height: 18, background: "#ddd", margin: "0 8px" }} />
 
@@ -927,117 +993,13 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
 
       <hr style={{ margin: "16px 0" }} />
 
-      {view === "manager" ? (
-        <div>
-          <h2 style={{ marginTop: 0 }}>Manager – Approvals</h2>
+      {view === "outcomes" && <OutcomesScreen />}
+      
+      {view === "manager" && <ManagerScreen />}
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <label>
-              Status:
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ marginLeft: 8 }}>
-                <option value="PENDING">PENDING</option>
-                <option value="APPROVED">APPROVED</option>
-                <option value="REJECTED">REJECTED</option>
-                <option value="">ALL</option>
-              </select>
-            </label>
+      {view === "admin" && <AdminScreen />}
 
-            <button onClick={() => refreshManager(true)} disabled={loadingProposals}>
-              Refresh
-            </button>
-
-            <button
-              onClick={async () => {
-                setLoadingProposals(true);
-                try {
-                  await approveAllFiltered({ status: statusFilter || undefined });
-                  await refreshManager(true);
-                } finally {
-                  setLoadingProposals(false);
-                }
-              }}
-              disabled={loadingProposals || statusFilter !== "PENDING"}
-            >
-              Approve All (filtered)
-            </button>
-          </div>
-
-          <div style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 8, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "rgba(0,0,0,0.03)" }}>
-                  <th style={{ textAlign: "left", padding: 8 }}>Created</th>
-                  <th style={{ textAlign: "left", padding: 8 }}>Item</th>
-                  <th style={{ textAlign: "left", padding: 8 }}>Suggested</th>
-                  <th style={{ textAlign: "left", padding: 8 }}>Rule</th>
-                  <th style={{ textAlign: "left", padding: 8 }}>Status</th>
-                  <th style={{ textAlign: "left", padding: 8 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {proposals.map((p) => (
-                  <tr key={p.id} style={{ borderTop: "1px solid #eee" }}>
-                    <td style={{ padding: 8 }}>{new Date(p.createdAt).toLocaleString()}</td>
-                    <td style={{ padding: 8 }}>
-                      {p.boardId}:{p.itemId}
-                    </td>
-                    <td style={{ padding: 8 }}>{p.suggestedAssigneeRaw ?? "—"}</td>
-                    <td style={{ padding: 8 }}>{p.suggestedRuleName ?? "—"}</td>
-                    <td style={{ padding: 8 }}>{p.status}</td>
-                    <td style={{ padding: 8 }}>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button
-                          onClick={async () => {
-                            await approve(p.id);
-                            await refreshManager(true);
-                          }}
-                          disabled={p.status !== "PENDING"}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={async () => {
-                            await reject(p.id);
-                            await refreshManager(true);
-                          }}
-                          disabled={p.status !== "PENDING"}
-                        >
-                          Reject
-                        </button>
-                        <button
-                          onClick={async () => {
-                            const v = prompt("Override assignee raw value (people column JSON or id depending on your mapping):");
-                            if (!v) return;
-                            await overrideAndApply(p.id, v);
-                            await refreshManager(true);
-                          }}
-                          disabled={p.status !== "PENDING"}
-                        >
-                          Override+Apply
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!proposals.length ? (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 12, opacity: 0.75 }}>
-                      No proposals.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <button onClick={() => refreshManager(false)} disabled={!cursor || loadingProposals}>
-              Load more
-            </button>
-          </div>
-        </div>
-      ) : null}
-
+      {/* OLD ADMIN CODE - TO BE REMOVED
       {view === "admin" ? (
         <div>
           <h2 style={{ marginTop: 0 }}>Admin – Monday Connection + Metrics Wizard</h2>
@@ -1430,6 +1392,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
           ) : null}
         </div>
       ) : null}
+      END OF OLD ADMIN CODE */}
     </div>
   );
 }

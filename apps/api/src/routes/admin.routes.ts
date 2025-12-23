@@ -5,6 +5,7 @@ import { createMondayClientForOrg } from "../../../../packages/modules/monday-in
 import { refreshMondayUsersCache } from "../../../../packages/modules/monday-integration/src/application/monday.people";
 
 import { PrismaMondayCredentialRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayCredential.repo";
+import { PrismaMondayUserCacheRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayUserCache.repo";
 
 import { validateBody } from "../middlewares/validateBody";
 import { InternalSchemaZ } from "../../../../packages/core/src/schema/zodSchemas";
@@ -329,6 +330,19 @@ export function adminRoutes() {
     const users = await (client as any).fetchUsers();
 
     return res.json({ ok: true, usersCount: Array.isArray(users) ? users.length : 0 });
+  });
+
+  r.get("/monday/users", async (_req, res) => {
+    const userCacheRepo = new PrismaMondayUserCacheRepo();
+    const users = await userCacheRepo.list(ORG_ID);
+    return res.json({ 
+      ok: true, 
+      users: users.map(u => ({ 
+        id: u.userId, 
+        name: u.name, 
+        email: u.email 
+      })) 
+    });
   });
 
   return r;

@@ -31,7 +31,7 @@ export type RoutingPreviewResult = {
   winner: { agentUserId: string; agentName: string; score: number } | null;
 };
 
-const DEFAULT_API_BASE = "http://localhost:3001"; // change if needed
+const DEFAULT_API_BASE = "http://localhost:3000"; // change if needed
 
 export function getApiBase(): string {
   return (localStorage.getItem("apiBase") || DEFAULT_API_BASE).trim();
@@ -80,6 +80,17 @@ export async function overrideAndApply(id: string, assigneeValue: string): Promi
     method: "POST",
     body: JSON.stringify({ assigneeValue, applyNow: true }),
   });
+}
+
+export interface MondayUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export async function getMondayUsers(): Promise<MondayUser[]> {
+  const data = await http<{ ok: boolean; users: MondayUser[] }>(`/admin/monday/users`);
+  return data.users || [];
 }
 
 export async function approveAllFiltered(status: string, maxTotal = 200): Promise<{ processed: number }> {
@@ -153,21 +164,21 @@ export type MetricsConfigDTO = {
 };
 
 export async function getMetricsConfig(): Promise<MetricsConfigDTO> {
-  const json = await request<{ ok: boolean; config: MetricsConfigDTO }>("/metrics/config", {
+  const json = await http<{ ok: boolean; config: MetricsConfigDTO }>("/metrics/config", {
     method: "GET",
   });
   return json.config;
 }
 
 export async function updateMetricsConfig(patch: Partial<MetricsConfigDTO>): Promise<any> {
-  return request("/metrics/config", {
+  return http("/metrics/config", {
     method: "PUT",
     body: JSON.stringify(patch),
   });
 }
 
 export async function recomputeMetrics(): Promise<any> {
-  return request("/metrics/recompute", {
+  return http("/metrics/recompute", {
     method: "POST",
   });
 }
@@ -178,17 +189,17 @@ export type MondayColumnDTO = { id: string; title: string; type: string; setting
 export type MondayStatusLabelDTO = { key: string; label: string };
 
 export async function listMondayBoards(): Promise<MondayBoardDTO[]> {
-  const json = await request<{ ok: boolean; boards: MondayBoardDTO[] }>("/monday/boards", { method: "GET" });
+  const json = await http<{ ok: boolean; boards: MondayBoardDTO[] }>("/monday/boards", { method: "GET" });
   return json.boards;
 }
 
 export async function listMondayBoardColumns(boardId: string): Promise<MondayColumnDTO[]> {
-  const json = await request<{ ok: boolean; columns: MondayColumnDTO[] }>(`/monday/boards/${boardId}/columns`, { method: "GET" });
+  const json = await http<{ ok: boolean; columns: MondayColumnDTO[] }>(`/monday/boards/${boardId}/columns`, { method: "GET" });
   return json.columns;
 }
 
 export async function listMondayStatusLabels(boardId: string, columnId: string): Promise<MondayStatusLabelDTO[]> {
-  const json = await request<{ ok: boolean; labels: MondayStatusLabelDTO[] }>(`/monday/boards/${boardId}/status/${columnId}/labels`, { method: "GET" });
+  const json = await http<{ ok: boolean; labels: MondayStatusLabelDTO[] }>(`/monday/boards/${boardId}/status/${columnId}/labels`, { method: "GET" });
   return json.labels;
 }
 
@@ -199,4 +210,49 @@ export async function previewRouting(limit: number = 10): Promise<{ results: Rou
     body: JSON.stringify({ limit }),
   });
   return { results: data.results };
+}
+
+
+// ========================================
+// Outcomes API (Phase 1.7)
+// ========================================
+
+export type OutcomesKPIsDTO = {
+  assigned: number;
+  closedWon: number;
+  conversionRate: number;
+  medianTimeToCloseDays: number | null;
+  revenue: number | null;
+  avgDeal: number | null;
+};
+
+export type OutcomesPerAgentDTO = {
+  agentUserId: string;
+  agentName: string;
+  assigned: number;
+  closedWon: number;
+  conversionRate: number;
+  revenue: number | null;
+  avgDeal: number | null;
+  medianTimeToCloseDays: number | null;
+};
+
+export type OutcomesSummaryDTO = {
+  ok: boolean;
+  windowDays: number;
+  kpis: OutcomesKPIsDTO;
+  perAgent: OutcomesPerAgentDTO[];
+  comparison: null;
+};
+
+export async function getOutcomesSummary(params: {
+  windowDays?: 7 | 30 | 90;
+  mode?: string;
+  boardId?: string;
+}): Promise<OutcomesSummaryDTO> {
+  const q = new URLSearchParams();
+  if (params.windowDays) q.set("windowDays", String(params.windowDays));
+  if (params.mode) q.set("mode", params.mode);
+  if (params.boardId) q.set("boardId", params.boardId);
+  return await http<OutcomesSummaryDTO>(`/outcomes/summary?${q.toString()}`);
 }
