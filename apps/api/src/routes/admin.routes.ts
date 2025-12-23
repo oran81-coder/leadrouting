@@ -40,6 +40,23 @@ export function adminRoutes() {
   const auditRepo = new PrismaAuditRepo();
   const credRepo = new PrismaMondayCredentialRepo();
 
+  // Defensive audit helper: never crash the endpoint due to audit failures
+  async function safeAudit(params: {
+    orgId: string;
+    actorUserId: string;
+    action: string;
+    entityType: string;
+    entityId: string | null;
+    before?: unknown;
+    after?: unknown;
+  }): Promise<void> {
+    try {
+      await auditRepo.log(params as any);
+    } catch (err) {
+      console.error("[safeAudit] Audit log failed (non-fatal):", err);
+    }
+  }
+
   // -------------------------
   // Sanity
   // -------------------------
@@ -83,7 +100,7 @@ export function adminRoutes() {
 
     const saved = await schemaRepo.saveNewVersion(ORG_ID, payload, ACTOR_ID);
 
-    await auditRepo.log({
+    await safeAudit({
       orgId: ORG_ID,
       actorUserId: ACTOR_ID,
       action: "schema.saveNewVersion",
@@ -102,7 +119,7 @@ export function adminRoutes() {
 
     const saved = await mappingRepo.saveNewVersion(ORG_ID, payload, ACTOR_ID);
 
-    await auditRepo.log({
+    await safeAudit({
       orgId: ORG_ID,
       actorUserId: ACTOR_ID,
       action: "mapping.saveNewVersion",
@@ -129,7 +146,7 @@ export function adminRoutes() {
 
     const saved = await rulesRepo.saveNewVersion(ORG_ID, payload, ACTOR_ID);
 
-    await auditRepo.log({
+    await safeAudit({
       orgId: ORG_ID,
       actorUserId: ACTOR_ID,
       action: "rules.saveNewVersion",
@@ -154,6 +171,7 @@ export function adminRoutes() {
   r.post("/routing/enable", async (_req, res) => {
     const s = await schemaRepo.getLatest(ORG_ID);
     const m = await mappingRepo.getLatest(ORG_ID);
+    const r = await rulesRepo.getLatest(ORG_ID);
 
     if (!s || !m) {
       return res.status(400).json({
@@ -181,11 +199,12 @@ export function adminRoutes() {
       enabledBy: ACTOR_ID,
       schemaVersion: (s as any).version,
       mappingVersion: (m as any).version,
+      rulesVersion: r ? (r as any).version : null,
     });
 
     const updated = await routingStateRepo.get(ORG_ID);
 
-    await auditRepo.log({
+    await safeAudit({
       orgId: ORG_ID,
       actorUserId: ACTOR_ID,
       action: "routing.enable",
@@ -208,7 +227,7 @@ export function adminRoutes() {
 
     const updated = await routingStateRepo.get(ORG_ID);
 
-    await auditRepo.log({
+    await safeAudit({
       orgId: ORG_ID,
       actorUserId: ACTOR_ID,
       action: "routing.disable",
@@ -228,7 +247,7 @@ export function adminRoutes() {
     const client = await createMondayClientForOrg(ORG_ID);
     const count = await refreshMondayUsersCache(client as any, ORG_ID);
 
-    await auditRepo.log({
+    await safeAudit({
       orgId: ORG_ID,
       actorUserId: ACTOR_ID,
       action: "monday.users.refresh",
@@ -253,7 +272,7 @@ export function adminRoutes() {
 
     await credRepo.upsert(ORG_ID, { token, endpoint });
 
-    await auditRepo.log({
+    await safeAudit({
       orgId: ORG_ID,
       actorUserId: ACTOR_ID,
       action: "monday.connect",

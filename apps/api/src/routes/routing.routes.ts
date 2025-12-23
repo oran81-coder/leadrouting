@@ -47,6 +47,19 @@ export function routingRoutes() {
 
   const ORG_ID = "org_1"; // TODO auth/JWT
 
+  /**
+   * Safe audit logging helper (non-fatal)
+   */
+  async function safeAudit(evt: any): Promise<void> {
+    try {
+      await auditRepo.log(evt);
+    } catch (e: any) {
+      if (process.env.DEBUG_PREVIEW === "1") {
+        console.warn("[safeAudit] Failed to log audit event:", e?.message ?? String(e));
+      }
+    }
+  }
+
   function mapMondayItemToInternalRaw(item: any, mapping: FieldMappingConfig): Record<string, any> {
     const byId = new Map<string, any>();
     for (const cv of item.column_values ?? []) byId.set(cv.id, cv);
@@ -70,30 +83,124 @@ export function routingRoutes() {
 
   r.post("/evaluate", async (req, res) => {
     try {
-      const state = await stateRepo.get(ORG_ID);
-      if (!state?.isEnabled) {
-        return res.status(400).json({ ok: false, error: "Routing is not enabled for org. Enable via /admin/routing/enable." });
+      if (process.env.DEBUG_PREVIEW === "1") {
+        console.log("[routing/evaluate] req.body:", JSON.stringify(req.body));
+        console.log("[routing/evaluate] hasItem:", !!(req.body && req.body.item));
+        console.log("[routing/evaluate] hasLead:", !!(req.body && req.body.lead));
       }
 
-      const schema = await schemaRepo.getLatest(ORG_ID);
-      const mapping = await mappingRepo.getLatest(ORG_ID);
-      const rules = await rulesRepo.getLatest(ORG_ID);
+      const routingState = await stateRepo.get(ORG_ID);
+      
+      // Phase 1.2: Version pinning when routing enabled
+      let schema: any;
+      let mapping: any;
+      let rules: any;
+      let effectiveSource: "pinned" | "latest";
 
-      if (!schema || !mapping || !rules) {
-        return res.status(400).json({ ok: false, error: "Missing latest schema/mapping/rules." });
+      if (routingState?.isEnabled && routingState.schemaVersion != null && routingState.mappingVersion != null) {
+        // PINNED: Use versions from routing state snapshot
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/evaluate] Using PINNED versions from routing state");
+        }
+        
+        schema = await schemaRepo.getByVersion(ORG_ID, routingState.schemaVersion);
+        mapping = await mappingRepo.getByVersion(ORG_ID, routingState.mappingVersion);
+        rules = routingState.rulesVersion != null 
+          ? await rulesRepo.getByVersion(ORG_ID, routingState.rulesVersion)
+          : null;
+        effectiveSource = "pinned";
+
+        if (!schema || !mapping) {
+          return res.status(400).json({ 
+            ok: false, 
+            error: "Pinned versions not found in DB. Schema or mapping may have been deleted.",
+            requestedVersions: {
+              schemaVersion: routingState.schemaVersion,
+              mappingVersion: routingState.mappingVersion,
+              rulesVersion: routingState.rulesVersion,
+            }
+          });
+        }
+      } else {
+        // LATEST: Use latest versions (existing behavior)
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/evaluate] Using LATEST versions");
+        }
+        
+        schema = await schemaRepo.getLatest(ORG_ID);
+        mapping = await mappingRepo.getLatest(ORG_ID);
+        rules = await rulesRepo.getLatest(ORG_ID);
+        effectiveSource = "latest";
+
+        if (!schema || !mapping) {
+          return res.status(400).json({ ok: false, error: "Missing latest schema/mapping. Save via /admin/schema and /admin/mapping." });
+        }
       }
 
       const biz = validateSchemaAndMapping(schema as any, mapping as any);
       if (!biz.ok) return res.status(400).json({ ok: false, error: "Business validation failed", issues: biz.issues });
 
-      const raw = req.body?.lead ?? {};
+      // Phase 1: Support both formats:
+      // A) { item: { id, column_values: [...] } } - Monday mock format
+      // B) { lead: { <internalFieldId>: value } } - Direct internal format
+      let raw: Record<string, any> = {};
+
+      if (req.body && req.body.item) {
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/evaluate] MOCK ITEM branch - using Monday item format");
+        }
+        // Convert Monday item to internal raw using mapping
+        raw = mapMondayItemToInternalRaw(req.body.item, mapping as any);
+      } else if (req.body && req.body.lead) {
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/evaluate] DIRECT LEAD branch - using internal format");
+        }
+        raw = req.body.lead;
+      } else {
+        return res.status(400).json({ 
+          ok: false, 
+          error: "Invalid body. Expected { item: {...} } (Monday mock) or { lead: { <internalFieldId>: value } }" 
+        });
+      }
+
       if (typeof raw !== "object" || !raw) {
-        return res.status(400).json({ ok: false, error: "Invalid body. Expected { lead: { <internalFieldId>: value } }" });
+        return res.status(400).json({ ok: false, error: "Invalid raw data after parsing" });
       }
 
       const norm = normalizeEntityRecord(schema as any, "lead", raw as any);
       if (norm.errors.length) {
         return res.status(400).json({ ok: false, error: "Normalization failed", normalizationErrors: norm.errors });
+      }
+
+      // Phase 1: Allow dry-run even if no rules configured
+      if (!rules) {
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/evaluate] No rules configured - returning null match");
+        }
+        return res.json({
+          ok: true,
+          normalizedValues: norm.values,
+          matched: false,
+          selectedRule: null,
+          matchedRuleId: null,
+          assignedTo: null,
+          reason: "No rules configured for this org",
+          schemaVersion: (schema as any).version,
+          mappingVersion: (mapping as any).version,
+          rulesVersion: null,
+          routingEnabled: routingState?.isEnabled ?? false,
+          routingSnapshot: routingState ? {
+            schemaVersion: routingState.schemaVersion,
+            mappingVersion: routingState.mappingVersion,
+            rulesVersion: routingState.rulesVersion,
+          } : null,
+          effectiveVersions: {
+            schemaVersion: (schema as any).version,
+            mappingVersion: (mapping as any).version,
+            rulesVersion: null,
+            source: effectiveSource,
+          },
+        });
       }
 
       const result = evaluateRuleSet(norm.values as any, rules as any);
@@ -113,171 +220,207 @@ export function routingRoutes() {
         normalizedValues: norm.values,
         matched: result.matched,
         selectedRule: result.selectedRule ?? null,
+        matchedRuleId: result.selectedRule?.id ?? null,
+        assignedTo: result.selectedRule?.action?.value ?? null,
+        reason: result.selectedRule ? `Matched rule: ${result.selectedRule.name}` : "No matching rule",
         explains: result.explains,
+        schemaVersion: (schema as any).version,
+        mappingVersion: (mapping as any).version,
+        rulesVersion: (rules as any).version,
+        routingEnabled: routingState?.isEnabled ?? false,
+        routingSnapshot: routingState ? {
+          schemaVersion: routingState.schemaVersion,
+          mappingVersion: routingState.mappingVersion,
+          rulesVersion: routingState.rulesVersion,
+        } : null,
+        effectiveVersions: {
+          schemaVersion: (schema as any).version,
+          mappingVersion: (mapping as any).version,
+          rulesVersion: (rules as any).version,
+          source: effectiveSource,
+        },
       });
     } catch (e: any) {
+      console.error("[routing/evaluate] Error:", e?.message ?? String(e));
       return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
     }
   });
 
   r.post("/execute", async (req, res) => {
     try {
-      const state = await stateRepo.get(ORG_ID);
-      if (!state?.isEnabled) {
-        return res.status(400).json({ ok: false, error: "Routing is not enabled for org. Enable via /admin/routing/enable." });
+      if (process.env.DEBUG_PREVIEW === "1") {
+        console.log("[routing/execute] req.body:", JSON.stringify(req.body));
+        console.log("[routing/execute] hasItem:", !!(req.body && req.body.item));
+        console.log("[routing/execute] hasLead:", !!(req.body && req.body.lead));
       }
 
-      const schema = await schemaRepo.getLatest(ORG_ID);
-      const mapping = await mappingRepo.getLatest(ORG_ID);
-      const rules = await rulesRepo.getLatest(ORG_ID);
-      if (!schema || !mapping || !rules) {
-        return res.status(400).json({ ok: false, error: "Missing latest schema/mapping/rules." });
+      const routingState = await stateRepo.get(ORG_ID);
+      
+      // Phase 1.3: Version pinning (same logic as evaluate)
+      let schema: any;
+      let mapping: any;
+      let rules: any;
+      let effectiveSource: "pinned" | "latest";
+
+      if (routingState?.isEnabled && routingState.schemaVersion != null && routingState.mappingVersion != null) {
+        // PINNED: Use versions from routing state snapshot
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/execute] Using PINNED versions from routing state");
+        }
+        
+        schema = await schemaRepo.getByVersion(ORG_ID, routingState.schemaVersion);
+        mapping = await mappingRepo.getByVersion(ORG_ID, routingState.mappingVersion);
+        rules = routingState.rulesVersion != null 
+          ? await rulesRepo.getByVersion(ORG_ID, routingState.rulesVersion)
+          : null;
+        effectiveSource = "pinned";
+
+        if (!schema || !mapping) {
+          return res.status(400).json({ 
+            ok: false, 
+            error: "Pinned versions not found in DB. Schema or mapping may have been deleted.",
+            requestedVersions: {
+              schemaVersion: routingState.schemaVersion,
+              mappingVersion: routingState.mappingVersion,
+              rulesVersion: routingState.rulesVersion,
+            }
+          });
+        }
+      } else {
+        // LATEST: Use latest versions
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/execute] Using LATEST versions");
+        }
+        
+        schema = await schemaRepo.getLatest(ORG_ID);
+        mapping = await mappingRepo.getLatest(ORG_ID);
+        rules = await rulesRepo.getLatest(ORG_ID);
+        effectiveSource = "latest";
+
+        if (!schema || !mapping) {
+          return res.status(400).json({ ok: false, error: "Missing latest schema/mapping. Save via /admin/schema and /admin/mapping." });
+        }
       }
 
       const biz = validateSchemaAndMapping(schema as any, mapping as any);
       if (!biz.ok) return res.status(400).json({ ok: false, error: "Business validation failed", issues: biz.issues });
 
-      const settings = await settingsRepo.get(ORG_ID);
-      let mode = settings.mode;
-      if (forceManual || triggerReason === "INDUSTRY_CHANGED") mode = "MANUAL_APPROVAL";
+      // Phase 1.3: Support both mock item and direct lead formats
+      let raw: Record<string, any> = {};
+      let inputSource: "mock_item" | "direct_lead";
+      let itemId: string | null = null;
 
-      const boardId = req.body?.boardId ? String(req.body.boardId) : null;
-      const itemId = req.body?.itemId ? String(req.body.itemId) : null;
-
-      let rawLead: Record<string, any> = {};
-      let usedBoardId: string | null = null;
-      let usedItemId: string | null = null;
-
-      if ((boardId && itemId) || (!boardId && itemId)) {
-        const client = await createMondayClientForOrg(ORG_ID);
-
-        const fetched = boardId ? await client.fetchItem(boardId, itemId!) : await client.fetchItemById(itemId!);
-        usedBoardId = String(fetched.boardId);
-        usedItemId = String(fetched.item.id);
-
-        rawLead = mapMondayItemToInternalRaw(fetched.item, mapping as any);
+      if (req.body && req.body.item) {
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/execute] MOCK ITEM branch - using Monday item format");
+        }
+        raw = mapMondayItemToInternalRaw(req.body.item, mapping as any);
+        inputSource = "mock_item";
+        itemId = req.body.item.id ?? null;
+      } else if (req.body && req.body.lead) {
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/execute] DIRECT LEAD branch - using internal format");
+        }
+        raw = req.body.lead;
+        inputSource = "direct_lead";
       } else {
-        rawLead = req.body?.lead ?? {};
+        return res.status(400).json({ 
+          ok: false, 
+          error: "Invalid body. Expected { item: {...} } (Monday mock) or { lead: { <internalFieldId>: value } }" 
+        });
       }
 
-      const norm = normalizeEntityRecord(schema as any, "lead", rawLead as any);
+      if (typeof raw !== "object" || !raw) {
+        return res.status(400).json({ ok: false, error: "Invalid raw data after parsing" });
+      }
+
+      const norm = normalizeEntityRecord(schema as any, "lead", raw as any);
       if (norm.errors.length) {
         return res.status(400).json({ ok: false, error: "Normalization failed", normalizationErrors: norm.errors });
       }
 
-      const evalResult = evaluateRuleSet(norm.values as any, rules as any);
-
-      if (!evalResult.matched || !evalResult.selectedRule) {
-        return res.json({ ok: true, matched: false, selectedRule: null, explains: evalResult.explains, mode });
-      }
-
-      // Idempotency per item+versions (prevents duplicate proposals on retries)
-      const idempotencyKey = `${usedBoardId ?? boardId ?? "unknown"}::${usedItemId ?? itemId ?? "unknown"}::schema:${(schema as any).version}::mapping:${(mapping as any).version}::rules:${(rules as any).version}`;
-
-      const proposal = await proposalRepo.create({
-        idempotencyKey,
-        orgId: ORG_ID,
-        boardId: usedBoardId ?? (boardId ?? "unknown"),
-        itemId: usedItemId ?? (itemId ?? "unknown"),
-        normalizedValues: norm.values,
-        selectedRule: evalResult.selectedRule,
-        action: evalResult.selectedRule.action,
-        explainability: evalResult.explains,
-      });
-
-      await auditRepo.log({
-        orgId: ORG_ID,
-        actorUserId: "system",
-        action: "routing.propose",
-        entityType: "RoutingProposal",
-        entityId: proposal.id,
-        before: null,
-        after: { proposalId: proposal.id, selectedRule: evalResult.selectedRule, mode, triggerReason },
-      });
-
-      const reason = `${evalResult.selectedRule.name} (#${evalResult.selectedRule.id})`;
-
-      if (mode === "MANUAL_APPROVAL") {
-        // Optional: mark item as Pending Approval in Monday (status/reason only)
-        if (usedBoardId && usedItemId) {
-          try {
-            const client = await createMondayClientForOrg(ORG_ID);
-            await setRoutingMetaOnMonday(client as any, (mapping as any).writebackTargets, {
-              boardId: usedBoardId,
-              itemId: usedItemId,
-              status: "Pending Approval",
-              reason,
-            });
-          } catch {
-            // Non-fatal: proposal is still created; UI can show pending approval internally
-          }
+      // Phase 1.3: Handle no rules gracefully
+      if (!rules) {
+        if (process.env.DEBUG_PREVIEW === "1") {
+          console.log("[routing/execute] No rules configured - returning null match");
         }
+
+        await safeAudit({
+          orgId: ORG_ID,
+          actorUserId: "system",
+          action: "routing.execute",
+          entityType: "Lead",
+          entityId: itemId,
+          before: null,
+          after: { values: norm.values, matched: false, reason: "No rules" },
+        });
 
         return res.json({
           ok: true,
-          mode,
-          status: "PROPOSED",
-          proposalId: proposal.id,
-          matched: true,
-          selectedRule: evalResult.selectedRule,
-          explains: evalResult.explains,
+          mode: "execute_lite",
+          matched: false,
+          matchedRuleId: null,
+          assignedTo: null,
+          reason: "No rules configured for this org",
+          routingEnabled: routingState?.isEnabled ?? false,
+          routingSnapshot: routingState ? {
+            schemaVersion: routingState.schemaVersion,
+            mappingVersion: routingState.mappingVersion,
+            rulesVersion: routingState.rulesVersion,
+          } : null,
+          effectiveVersions: {
+            schemaVersion: (schema as any).version,
+            mappingVersion: (mapping as any).version,
+            rulesVersion: null,
+            source: effectiveSource,
+          },
+          input: {
+            source: inputSource,
+            itemId: itemId,
+            leadId: null,
+          },
         });
       }
 
-      // AUTO mode => apply writeback immediately (requires boardId/itemId)
-      if (!usedBoardId || !usedItemId || usedBoardId === "unknown" || usedItemId === "unknown") {
-        return res.status(400).json({
-          ok: false,
-          error: "AUTO mode requires { boardId, itemId } so we can write back to Monday.",
-          mode,
-          proposalId: proposal.id,
-        });
-      }
+      const evalResult = evaluateRuleSet(norm.values as any, rules as any);
 
-      const client = await createMondayClientForOrg(ORG_ID);
-
-      const targets = (mapping as any).writebackTargets;
-        let assigneeResolvedValue = String(evalResult.selectedRule.action.value);
-        if (targets?.assignedAgent?.columnType === 'people') {
-          assigneeResolvedValue = String(await resolveMondayPersonId(client as any, ORG_ID, assigneeResolvedValue));
-        }
-
-        
-      const guard = await applyRepo.tryBegin(ORG_ID, proposal.id);
-      if (guard === "ALREADY") {
-        await proposalRepo.markApplied(ORG_ID, proposal.id);
-        return res.json({ ok: true, mode, status: "APPLIED", alreadyApplied: true, proposalId: proposal.id });
-      }
-
-await applyAssignmentToMonday(client as any, targets, {
-        boardId: usedBoardId,
-        itemId: usedItemId,
-        assigneeValue: assigneeResolvedValue,
-        reason,
-        status: "Assigned",
-      });
-
-      await proposalRepo.markApplied(ORG_ID, proposal.id);
-
-      await auditRepo.log({
+      await safeAudit({
         orgId: ORG_ID,
         actorUserId: "system",
-        action: "routing.apply",
-        entityType: "RoutingProposal",
-        entityId: proposal.id,
+        action: "routing.execute",
+        entityType: "Lead",
+        entityId: itemId,
         before: null,
-        after: { proposalId: proposal.id, applied: true, mode: "AUTO" },
+        after: { values: norm.values, selectedRule: evalResult.selectedRule },
       });
 
       return res.json({
         ok: true,
-        mode,
-        status: "APPLIED",
-        proposalId: proposal.id,
-        matched: true,
-        selectedRule: evalResult.selectedRule,
+        mode: "execute_lite",
+        matched: evalResult.matched,
+        matchedRuleId: evalResult.selectedRule?.id ?? null,
+        assignedTo: evalResult.selectedRule?.action?.value ?? null,
+        reason: evalResult.selectedRule ? `Matched rule: ${evalResult.selectedRule.name}` : "No matching rule",
+        routingEnabled: routingState?.isEnabled ?? false,
+        routingSnapshot: routingState ? {
+          schemaVersion: routingState.schemaVersion,
+          mappingVersion: routingState.mappingVersion,
+          rulesVersion: routingState.rulesVersion,
+        } : null,
+        effectiveVersions: {
+          schemaVersion: (schema as any).version,
+          mappingVersion: (mapping as any).version,
+          rulesVersion: (rules as any).version,
+          source: effectiveSource,
+        },
+        input: {
+          source: inputSource,
+          itemId: itemId,
+          leadId: null,
+        },
       });
     } catch (e: any) {
+      console.error("[routing/execute] Error:", e?.message ?? String(e));
       return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
     }
   });

@@ -35,25 +35,47 @@ export class PrismaRoutingStateRepo {
     rulesVersion?: number | null;
   }): Promise<void> {
     const prisma = getPrisma();
-    await prisma.routingState.upsert({
-      where: { orgId: args.orgId },
-      update: {
-        isEnabled: args.enabled,
-        enabledAt: args.enabled ? new Date() : null,
-        enabledBy: args.enabled ? (args.enabledBy ?? null) : null,
-        schemaVersion: args.enabled ? (args.schemaVersion ?? null) : null,
-        mappingVersion: args.enabled ? (args.mappingVersion ?? null) : null,
-        rulesVersion: args.enabled ? (args.rulesVersion ?? null) : null,
-      },
-      create: {
-        orgId: args.orgId,
-        isEnabled: args.enabled,
-        enabledAt: args.enabled ? new Date() : null,
-        enabledBy: args.enabled ? (args.enabledBy ?? null) : null,
-        schemaVersion: args.enabled ? (args.schemaVersion ?? null) : null,
-        mappingVersion: args.enabled ? (args.mappingVersion ?? null) : null,
-        rulesVersion: args.enabled ? (args.rulesVersion ?? null) : null,
-      },
-    });
+    
+    if (args.enabled) {
+      // When enabling: capture current versions
+      await prisma.routingState.upsert({
+        where: { orgId: args.orgId },
+        update: {
+          isEnabled: true,
+          enabledAt: new Date(),
+          enabledBy: args.enabledBy ?? null,
+          schemaVersion: args.schemaVersion ?? null,
+          mappingVersion: args.mappingVersion ?? null,
+          rulesVersion: args.rulesVersion ?? null,
+        },
+        create: {
+          orgId: args.orgId,
+          isEnabled: true,
+          enabledAt: new Date(),
+          enabledBy: args.enabledBy ?? null,
+          schemaVersion: args.schemaVersion ?? null,
+          mappingVersion: args.mappingVersion ?? null,
+          rulesVersion: args.rulesVersion ?? null,
+        },
+      });
+    } else {
+      // When disabling: preserve versions, just flip flag
+      await prisma.routingState.upsert({
+        where: { orgId: args.orgId },
+        update: {
+          isEnabled: false,
+          enabledAt: null,
+        },
+        create: {
+          orgId: args.orgId,
+          isEnabled: false,
+          enabledAt: null,
+          enabledBy: null,
+          schemaVersion: null,
+          mappingVersion: null,
+          rulesVersion: null,
+        },
+      });
+    }
   }
 }

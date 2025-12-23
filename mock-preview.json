@@ -1,0 +1,12 @@
+{
+    "orgId": "org_1",
+    "item": {
+      "id": "mock_item_1",
+      "name": "Test Lead",
+      "column_values": [
+        { "id": "email", "text": "test@example.com" },
+        { "id": "phone", "text": "+972500000000" }
+      ]
+    }
+  }
+  

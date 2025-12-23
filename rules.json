@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "updatedAt": "2025-12-22T00:00:00.000Z",
+  "rules": [{
+    "id": "rule_1",
+    "name": "Test Rule",
+    "priority": 100,
+    "enabled": true,
+    "when": [],
+    "then": {"type": "assign_agent_id", "value": "agent_123"}
+  }]
+}
+
