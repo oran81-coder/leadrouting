@@ -246,6 +246,223 @@ export function routingRoutes() {
     }
   });
 
+  /**
+   * Phase 1.4: MANUAL_APPROVAL mode helper
+   * Creates a proposal and optionally sets "Pending Approval" status
+   */
+  async function executeManual(params: {
+    boardId: string;
+    itemId: string;
+    norm: any;
+    evalResult: any;
+    schema: any;
+    mapping: any;
+    rules: any;
+    effectiveSource: string;
+  }) {
+    const { boardId, itemId, norm, evalResult, schema, mapping, rules, effectiveSource } = params;
+    
+    const idempotencyKey = `${boardId}_${itemId}_${schema.version}_${mapping.version}_${rules.version}`;
+    
+    const proposal = await proposalRepo.create({
+      orgId: ORG_ID,
+      idempotencyKey,
+      boardId,
+      itemId,
+      normalizedValues: norm.values,
+      selectedRule: evalResult.selectedRule,
+      action: evalResult.selectedRule?.action ?? null,
+      explainability: { explains: evalResult.explains },
+    });
+
+    // Optional: Set "Pending Approval" status on Monday (best-effort)
+    if (mapping.writebackTargets?.routingStatus) {
+      try {
+        const client = await createMondayClientForOrg(ORG_ID);
+        await setRoutingMetaOnMonday(client as any, mapping.writebackTargets, {
+          boardId,
+          itemId,
+          status: "Pending Approval",
+          reason: evalResult.selectedRule?.name ?? "Routing proposal created",
+        });
+      } catch (e: any) {
+        console.warn("[executeManual] Failed to set meta (non-fatal):", e?.message ?? String(e));
+      }
+    }
+
+    await safeAudit({
+      orgId: ORG_ID,
+      actorUserId: "system",
+      action: "routing.execute.manual_proposal_created",
+      entityType: "RoutingProposal",
+      entityId: proposal.id,
+      before: null,
+      after: { proposalId: proposal.id, idempotencyKey },
+    });
+
+    return {
+      ok: true,
+      mode: "manual_approval",
+      proposalId: proposal.id,
+      proposalStatus: proposal.status,
+      matched: evalResult.matched,
+      matchedRuleId: evalResult.selectedRule?.id ?? null,
+      assignedTo: evalResult.selectedRule?.action?.value ?? null,
+      reason: evalResult.selectedRule ? `Matched rule: ${evalResult.selectedRule.name}` : "No matching rule",
+      effectiveVersions: {
+        schemaVersion: schema.version,
+        mappingVersion: mapping.version,
+        rulesVersion: rules.version,
+        source: effectiveSource,
+      },
+      input: {
+        source: "mock_item",
+        itemId,
+        boardId,
+      },
+    };
+  }
+
+  /**
+   * Phase 1.4: AUTO mode helper
+   * Applies writeback immediately with idempotency guard
+   */
+  async function executeAuto(params: {
+    boardId: string;
+    itemId: string;
+    norm: any;
+    evalResult: any;
+    schema: any;
+    mapping: any;
+    rules: any;
+    effectiveSource: string;
+  }) {
+    const { boardId, itemId, norm, evalResult, schema, mapping, rules, effectiveSource } = params;
+    
+    const idempotencyKey = `${boardId}_${itemId}_${schema.version}_${mapping.version}_${rules.version}`;
+    
+    // Check idempotency
+    const guard = await applyRepo.tryBegin(ORG_ID, idempotencyKey);
+    if (guard === "ALREADY") {
+      return {
+        ok: true,
+        mode: "auto",
+        idempotent: true,
+        writeback: {
+          attempted: false,
+          success: false,
+          reason: "Already applied (idempotency guard)",
+        },
+        matched: evalResult.matched,
+        matchedRuleId: evalResult.selectedRule?.id ?? null,
+        assignedTo: evalResult.selectedRule?.action?.value ?? null,
+        effectiveVersions: {
+          schemaVersion: schema.version,
+          mappingVersion: mapping.version,
+          rulesVersion: rules.version,
+          source: effectiveSource,
+        },
+        input: {
+          source: "mock_item",
+          itemId,
+          boardId,
+        },
+      };
+    }
+
+    // No rule match - don't writeback
+    if (!evalResult.matched || !evalResult.selectedRule) {
+      return {
+        ok: true,
+        mode: "auto",
+        idempotent: false,
+        writeback: {
+          attempted: false,
+          success: false,
+          reason: "No matching rule",
+        },
+        matched: false,
+        matchedRuleId: null,
+        assignedTo: null,
+        effectiveVersions: {
+          schemaVersion: schema.version,
+          mappingVersion: mapping.version,
+          rulesVersion: rules.version,
+          source: effectiveSource,
+        },
+        input: {
+          source: "mock_item",
+          itemId,
+          boardId,
+        },
+      };
+    }
+
+    // Attempt writeback
+    let writebackSuccess = false;
+    let writebackError: string | undefined;
+
+    try {
+      const client = await createMondayClientForOrg(ORG_ID);
+      
+      let assigneeValue = String(evalResult.selectedRule.action?.value ?? "");
+      
+      // Resolve assignee if people column
+      if (mapping.writebackTargets?.assignedAgent?.columnType === "people") {
+        assigneeValue = String(await resolveMondayPersonId(client as any, ORG_ID, assigneeValue));
+      }
+
+      await applyAssignmentToMonday(client as any, mapping.writebackTargets, {
+        boardId,
+        itemId,
+        assigneeValue,
+        reason: evalResult.selectedRule.name ?? "Auto-assigned",
+        status: "Assigned",
+      });
+
+      writebackSuccess = true;
+
+      await safeAudit({
+        orgId: ORG_ID,
+        actorUserId: "system",
+        action: "routing.execute.auto_applied",
+        entityType: "Lead",
+        entityId: itemId,
+        before: null,
+        after: { boardId, itemId, assignedTo: assigneeValue },
+      });
+    } catch (e: any) {
+      writebackError = e?.message ?? String(e);
+      console.error("[executeAuto] Writeback failed:", writebackError);
+    }
+
+    return {
+      ok: true,
+      mode: "auto",
+      idempotent: false,
+      writeback: {
+        attempted: true,
+        success: writebackSuccess,
+        error: writebackError,
+      },
+      matched: evalResult.matched,
+      matchedRuleId: evalResult.selectedRule?.id ?? null,
+      assignedTo: evalResult.selectedRule?.action?.value ?? null,
+      reason: evalResult.selectedRule ? `Matched rule: ${evalResult.selectedRule.name}` : "No matching rule",
+      effectiveVersions: {
+        schemaVersion: schema.version,
+        mappingVersion: mapping.version,
+        rulesVersion: rules.version,
+        source: effectiveSource,
+      },
+      input: {
+        source: "mock_item",
+        itemId,
+        boardId,
+      },
+    };
+  }
+
   r.post("/execute", async (req, res) => {
     try {
       if (process.env.DEBUG_PREVIEW === "1") {
@@ -256,7 +473,7 @@ export function routingRoutes() {
 
       const routingState = await stateRepo.get(ORG_ID);
       
-      // Phase 1.3: Version pinning (same logic as evaluate)
+      // Phase 1.2/1.3: Version pinning
       let schema: any;
       let mapping: any;
       let rules: any;
@@ -305,10 +522,11 @@ export function routingRoutes() {
       const biz = validateSchemaAndMapping(schema as any, mapping as any);
       if (!biz.ok) return res.status(400).json({ ok: false, error: "Business validation failed", issues: biz.issues });
 
-      // Phase 1.3: Support both mock item and direct lead formats
+      // Parse input format
       let raw: Record<string, any> = {};
       let inputSource: "mock_item" | "direct_lead";
       let itemId: string | null = null;
+      let boardId: string | null = null;
 
       if (req.body && req.body.item) {
         if (process.env.DEBUG_PREVIEW === "1") {
@@ -317,6 +535,7 @@ export function routingRoutes() {
         raw = mapMondayItemToInternalRaw(req.body.item, mapping as any);
         inputSource = "mock_item";
         itemId = req.body.item.id ?? null;
+        boardId = req.body.boardId ?? req.body.item.boardId ?? null;
       } else if (req.body && req.body.lead) {
         if (process.env.DEBUG_PREVIEW === "1") {
           console.log("[routing/execute] DIRECT LEAD branch - using internal format");
@@ -339,11 +558,43 @@ export function routingRoutes() {
         return res.status(400).json({ ok: false, error: "Normalization failed", normalizationErrors: norm.errors });
       }
 
-      // Phase 1.3: Handle no rules gracefully
-      if (!rules) {
-        if (process.env.DEBUG_PREVIEW === "1") {
-          console.log("[routing/execute] No rules configured - returning null match");
+      // Phase 1.4: Check if routing is ENABLED
+      if (!routingState?.isEnabled) {
+        // DISABLED: Execute-lite mode (Phase 1.3 behavior)
+        if (!rules) {
+          await safeAudit({
+            orgId: ORG_ID,
+            actorUserId: "system",
+            action: "routing.execute",
+            entityType: "Lead",
+            entityId: itemId,
+            before: null,
+            after: { values: norm.values, matched: false, reason: "No rules" },
+          });
+
+          return res.json({
+            ok: true,
+            mode: "execute_lite",
+            matched: false,
+            matchedRuleId: null,
+            assignedTo: null,
+            reason: "No rules configured for this org",
+            routingEnabled: false,
+            effectiveVersions: {
+              schemaVersion: (schema as any).version,
+              mappingVersion: (mapping as any).version,
+              rulesVersion: null,
+              source: effectiveSource,
+            },
+            input: {
+              source: inputSource,
+              itemId: itemId,
+              leadId: null,
+            },
+          });
         }
+
+        const evalResult = evaluateRuleSet(norm.values as any, rules as any);
 
         await safeAudit({
           orgId: ORG_ID,
@@ -352,26 +603,21 @@ export function routingRoutes() {
           entityType: "Lead",
           entityId: itemId,
           before: null,
-          after: { values: norm.values, matched: false, reason: "No rules" },
+          after: { values: norm.values, selectedRule: evalResult.selectedRule },
         });
 
         return res.json({
           ok: true,
           mode: "execute_lite",
-          matched: false,
-          matchedRuleId: null,
-          assignedTo: null,
-          reason: "No rules configured for this org",
-          routingEnabled: routingState?.isEnabled ?? false,
-          routingSnapshot: routingState ? {
-            schemaVersion: routingState.schemaVersion,
-            mappingVersion: routingState.mappingVersion,
-            rulesVersion: routingState.rulesVersion,
-          } : null,
+          matched: evalResult.matched,
+          matchedRuleId: evalResult.selectedRule?.id ?? null,
+          assignedTo: evalResult.selectedRule?.action?.value ?? null,
+          reason: evalResult.selectedRule ? `Matched rule: ${evalResult.selectedRule.name}` : "No matching rule",
+          routingEnabled: false,
           effectiveVersions: {
             schemaVersion: (schema as any).version,
             mappingVersion: (mapping as any).version,
-            rulesVersion: null,
+            rulesVersion: (rules as any).version,
             source: effectiveSource,
           },
           input: {
@@ -382,43 +628,60 @@ export function routingRoutes() {
         });
       }
 
+      // ENABLED: Check mode and validate input
+      const settings = await settingsRepo.get(ORG_ID);
+
+      // Validation: AUTO and MANUAL_APPROVAL require boardId/itemId
+      if (inputSource === "direct_lead") {
+        return res.status(400).json({
+          ok: false,
+          error: "AUTO/MANUAL_APPROVAL mode requires { item: {...} } format with boardId and itemId. Use /routing/evaluate for dry-run with direct lead format.",
+        });
+      }
+
+      if (!boardId || !itemId) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing boardId or itemId. AUTO/MANUAL_APPROVAL modes require Monday item reference.",
+        });
+      }
+
+      if (!rules) {
+        return res.status(400).json({
+          ok: false,
+          error: "No rules configured. Cannot execute in AUTO/MANUAL_APPROVAL mode.",
+        });
+      }
+
       const evalResult = evaluateRuleSet(norm.values as any, rules as any);
 
-      await safeAudit({
-        orgId: ORG_ID,
-        actorUserId: "system",
-        action: "routing.execute",
-        entityType: "Lead",
-        entityId: itemId,
-        before: null,
-        after: { values: norm.values, selectedRule: evalResult.selectedRule },
-      });
-
-      return res.json({
-        ok: true,
-        mode: "execute_lite",
-        matched: evalResult.matched,
-        matchedRuleId: evalResult.selectedRule?.id ?? null,
-        assignedTo: evalResult.selectedRule?.action?.value ?? null,
-        reason: evalResult.selectedRule ? `Matched rule: ${evalResult.selectedRule.name}` : "No matching rule",
-        routingEnabled: routingState?.isEnabled ?? false,
-        routingSnapshot: routingState ? {
-          schemaVersion: routingState.schemaVersion,
-          mappingVersion: routingState.mappingVersion,
-          rulesVersion: routingState.rulesVersion,
-        } : null,
-        effectiveVersions: {
-          schemaVersion: (schema as any).version,
-          mappingVersion: (mapping as any).version,
-          rulesVersion: (rules as any).version,
-          source: effectiveSource,
-        },
-        input: {
-          source: inputSource,
-          itemId: itemId,
-          leadId: null,
-        },
-      });
+      // Branch on mode
+      if (settings.mode === "AUTO") {
+        const result = await executeAuto({
+          boardId,
+          itemId,
+          norm,
+          evalResult,
+          schema,
+          mapping,
+          rules,
+          effectiveSource,
+        });
+        return res.json(result);
+      } else {
+        // MANUAL_APPROVAL
+        const result = await executeManual({
+          boardId,
+          itemId,
+          norm,
+          evalResult,
+          schema,
+          mapping,
+          rules,
+          effectiveSource,
+        });
+        return res.json(result);
+      }
     } catch (e: any) {
       console.error("[routing/execute] Error:", e?.message ?? String(e));
       return res.status(500).json({ ok: false, error: e?.message ?? String(e) });

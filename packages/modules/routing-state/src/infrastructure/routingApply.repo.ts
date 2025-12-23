@@ -20,4 +20,20 @@ export class PrismaRoutingApplyRepo {
       throw e;
     }
   }
+
+  async getByKey(orgId: string, idempotencyKey: string): Promise<any | null> {
+    const prisma = getPrisma();
+    const row = await prisma.routingApply.findUnique({
+      where: { orgId_proposalId: { orgId, proposalId: idempotencyKey } }
+    });
+    return row;
+  }
+
+  async markComplete(orgId: string, proposalId: string): Promise<void> {
+    const prisma = getPrisma();
+    await prisma.routingApply.updateMany({
+      where: { orgId, proposalId },
+      data: { completedAt: new Date() }
+    });
+  }
 }

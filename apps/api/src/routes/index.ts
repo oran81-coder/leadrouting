@@ -8,6 +8,7 @@ import { mappingPreviewRoutes } from "./mappingPreview.routes";
 import { healthRoutes } from "./health.routes";
 import { metricsRoutes } from "./metrics.routes";
 import { mondayPickerRoutes } from "./mondayPicker.routes";
+import { outcomesRoutes } from "./outcomes.routes";
 
 import { requireApiKey } from "../middleware/authApiKey";
 import { requireMondayConnected } from "../middleware/requireMondayConnected";
@@ -28,6 +29,7 @@ export function registerRoutes(app: Express) {
   app.use("/routing", requireApiKey, routingRoutes());
   app.use("/manager", requireApiKey, managerRoutes());
   app.use("/metrics", requireApiKey, metricsRoutes());
+  app.use("/outcomes", requireApiKey, outcomesRoutes());
 
   app.use("/monday", requireApiKey, requireMondayConnected(ORG_ID), mondayPickerRoutes());
 

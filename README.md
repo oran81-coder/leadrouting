@@ -51,9 +51,11 @@ The system includes a simulation-only Routing Preview mode.
 Admins can preview agent scoring and explainability before activating real routing.
 See `docs/routing-preview.md`.
 
-## Outcomes (Layer C)
-A lightweight Outcomes screen spec (conversion, time-to-close, optional revenue/avg deal) is defined in:
-- `docs/success-metrics.md`
-- `docs/outcomes-screen-spec.md`
-
-This is designed as **Phase 1.5**: minimal API + UI, no BI/dashboard heavy lifting.
+## Outcomes Screen (Phase 1.6)
+The system includes an Outcomes API for observing business KPIs.
+- **GET /outcomes/summary** - Returns conversion, revenue, time-to-close metrics
+- Supports 7/30/90 day windows
+- Per-agent breakdown with final assignee attribution
+- Revenue/avgDeal optional (requires dealAmountColumnId mapping)
+- See `docs/40_metrics/success-metrics.md` and `docs/30_ui/outcomes-screen-spec.md`
+- Smoke test: `smoke-phase1_6-outcomes.ps1`
