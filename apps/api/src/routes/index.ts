@@ -4,10 +4,12 @@ import { managerRoutes } from "./manager.routes";
 import { routingRoutes } from "./routing.routes";
 import { adminRoutes } from "./admin.routes";
 import { mappingPreviewRoutes } from "./mappingPreview.routes";
+import { outcomesRoutes } from "./outcomes.routes";
 
 import { healthRoutes } from "./health.routes";
 import { metricsRoutes } from "./metrics.routes";
 import { mondayPickerRoutes } from "./mondayPicker.routes";
+import { authRoutes } from "./auth.routes";
 
 import { requireApiKey } from "../middleware/authApiKey";
 import { requireMondayConnected } from "../middleware/requireMondayConnected";
@@ -20,7 +22,9 @@ export function registerRoutes(app: Express) {
 
   console.log("[registerRoutes] loaded. ORG_ID =", ORG_ID);
 
+  // Public routes (no API key required)
   app.use("/health", healthRoutes());
+  app.use("/auth", authRoutes()); // Authentication endpoints
 
   app.use("/admin", requireApiKey, adminRoutes());
   console.log("[registerRoutes] mounted /admin");
@@ -28,6 +32,7 @@ export function registerRoutes(app: Express) {
   app.use("/routing", requireApiKey, routingRoutes());
   app.use("/manager", requireApiKey, managerRoutes());
   app.use("/metrics", requireApiKey, metricsRoutes());
+  app.use("/outcomes", requireApiKey, outcomesRoutes());
 
   app.use("/monday", requireApiKey, requireMondayConnected(ORG_ID), mondayPickerRoutes());
 

@@ -3,14 +3,31 @@ import ReactDOM from "react-dom/client";
 import App from "./ui/App";
 import { ThemeProvider } from "./ui/ThemeContext";
 import { ToastProvider } from "./ui/ToastContext";
+import { ErrorBoundary } from "./ui/ErrorBoundary";
+import { PerformanceMonitor } from "./ui/PerformanceMonitor";
+import { AuthProvider } from "./ui/AuthContext";
+import { AppWithAuth } from "./ui/AppWithAuth";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ThemeProvider>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
-    </ThemeProvider>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        // Log to external service in production (e.g., Sentry)
+        console.error("App Error:", error, errorInfo);
+      }}
+    >
+      <PerformanceMonitor id="App-Root">
+        <ThemeProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <AppWithAuth>
+                <App />
+              </AppWithAuth>
+            </AuthProvider>
+          </ToastProvider>
+        </ThemeProvider>
+      </PerformanceMonitor>
+    </ErrorBoundary>
   </React.StrictMode>
 );

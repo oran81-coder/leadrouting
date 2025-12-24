@@ -15,7 +15,7 @@ model InternalSchemaVersion {
   id        String   @id @default(cuid())
   orgId     String
   version   Int
-  payload   String   // JSON string
+  payload   String // JSON string
   createdAt DateTime @default(now())
   createdBy String?
 
@@ -27,7 +27,7 @@ model FieldMappingConfigVersion {
   id        String   @id @default(cuid())
   orgId     String
   version   Int
-  payload   String   // JSON string
+  payload   String // JSON string
   createdAt DateTime @default(now())
   createdBy String?
 
@@ -42,8 +42,8 @@ model AuditLog {
   action      String
   entityType  String
   entityId    String?
-  before      String?  // JSON string
-  after       String?  // JSON string
+  before      String? // JSON string
+  after       String? // JSON string
   createdAt   DateTime @default(now())
 
   @@index([orgId, createdAt])
@@ -53,7 +53,7 @@ model RuleSetVersion {
   id        String   @id @default(cuid())
   orgId     String
   version   Int
-  payload   String   // JSON string
+  payload   String // JSON string
   createdAt DateTime @default(now())
   createdBy String?
 
@@ -62,16 +62,16 @@ model RuleSetVersion {
 }
 
 model RoutingState {
-  id             String   @id @default(cuid())
-  orgId          String   @unique
-  isEnabled      Boolean  @default(false)
+  id             String    @id @default(cuid())
+  orgId          String    @unique
+  isEnabled      Boolean   @default(false)
   enabledAt      DateTime?
   enabledBy      String?
   // snapshots of versions at time of enable
   schemaVersion  Int?
   mappingVersion Int?
   rulesVersion   Int?
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime  @updatedAt
 }
 
 model RoutingSettings {
@@ -84,13 +84,13 @@ model RoutingSettings {
 }
 
 model RoutingProposal {
-  id              String   @id @default(cuid())
-  orgId           String
-  idempotencyKey  String
-  boardId         String
-  itemId          String
+  id             String @id @default(cuid())
+  orgId          String
+  idempotencyKey String
+  boardId        String
+  itemId         String
   // enum-like: "PROPOSED" | "APPROVED" | "REJECTED" | "OVERRIDDEN" | "APPLIED"
-  status          String   @default("PROPOSED")
+  status         String @default("PROPOSED")
 
   // snapshots (JSON strings)
   normalizedValues String
@@ -99,9 +99,9 @@ model RoutingProposal {
   explainability   String? // JSON string
 
   // decision
-  decidedAt      DateTime?
-  decidedBy      String?
-  decisionNotes  String?
+  decidedAt     DateTime?
+  decidedBy     String?
+  decisionNotes String?
 
   createdAt DateTime @default(now())
 
@@ -220,10 +220,10 @@ model LeadFact {
 
   // Monday values (last seen)
   assignedUserId String?
-  industry        String?
-  dealAmount      Float?
-  statusValue     String?
-  nextCallDate    String? // ISO date string (as text for simplicity)
+  industry       String?
+  dealAmount     Float?
+  statusValue    String?
+  nextCallDate   String? // ISO date string (as text for simplicity)
 
   // derived timestamps
   enteredAt      DateTime? // when item was first seen in intake scope
@@ -236,10 +236,16 @@ model LeadFact {
   @@unique([orgId, boardId, itemId])
   @@index([orgId, boardId])
   @@index([orgId, assignedUserId])
+  // Performance optimization: indexes for timestamp-based queries
+  @@index([orgId, closedWonAt])
+  @@index([orgId, enteredAt])
+  @@index([orgId, firstTouchAt])
+  @@index([orgId, assignedUserId, enteredAt])
+  @@index([orgId, assignedUserId, closedWonAt])
 }
 
 model AgentMetricsSnapshot {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   orgId       String
   agentUserId String
   windowDays  Int
@@ -266,5 +272,59 @@ model AgentMetricsSnapshot {
 
   updatedAt DateTime @updatedAt
 
+  @@unique([orgId, agentUserId, windowDays])
   @@index([orgId, agentUserId])
+  // Performance optimization: composite index for efficient lookups
+  @@index([orgId, agentUserId, windowDays])
+  @@index([orgId, windowDays])
+}
+
+// ============================================
+// Phase 5.1: Authentication & Authorization
+// ============================================
+
+model User {
+  id           String   @id @default(cuid())
+  orgId        String
+  username     String
+  email        String
+  passwordHash String
+  // role: 'admin' | 'manager' | 'agent'
+  role         String
+  firstName    String?
+  lastName     String?
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  sessions Session[]
+
+  @@unique([orgId, username])
+  @@unique([orgId, email])
+  @@index([orgId, role])
+  @@index([orgId, isActive])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  refreshToken String?  @unique
+  expiresAt    DateTime
+  refreshExpiresAt DateTime?
+  ipAddress    String?
+  userAgent    String?
+  isRevoked    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([refreshToken])
+  @@index([expiresAt])
 }

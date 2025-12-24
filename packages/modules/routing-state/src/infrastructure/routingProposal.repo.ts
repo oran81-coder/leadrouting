@@ -79,69 +79,6 @@ export class PrismaRoutingProposalRepo {
 
   async list(args: {
     orgId: string;
-    status?: ProposalStatus;
-    cursor?: string;
-    limit: number;
-    boardId?: string;
-    itemId?: string;
-  }): Promise<{ items: RoutingProposal[]; nextCursor: string | null }> {
-    const prisma = getPrisma();
-    
-    const where: any = { orgId: args.orgId };
-    if (args.status) where.status = args.status;
-    if (args.boardId) where.boardId = args.boardId;
-    if (args.itemId) where.itemId = args.itemId;
-    if (args.cursor) {
-      where.createdAt = { lt: new Date(args.cursor) };
-    }
-
-    const rows = await prisma.routingProposal.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: args.limit + 1,
-    });
-
-    const hasMore = rows.length > args.limit;
-    const items = rows.slice(0, args.limit);
-    const nextCursor = hasMore && items.length > 0 
-      ? items[items.length - 1].createdAt.toISOString() 
-      : null;
-
-    return {
-      items: items.map(r => this.toDto(r)),
-      nextCursor,
-    };
-  }
-
-  async setDecision(args: {
-    orgId: string;
-    id: string;
-    status: ProposalStatus;
-    decidedBy?: string | null;
-    decisionNotes?: string | null;
-    actionOverride?: unknown;
-  }): Promise<RoutingProposal> {
-    const prisma = getPrisma();
-    const row = await prisma.routingProposal.update({
-      where: { id: args.id },
-      data: {
-        status: args.status as any,
-        decidedAt: new Date(),
-        decidedBy: args.decidedBy ?? null,
-        decisionNotes: args.decisionNotes ?? null,
-        action: args.actionOverride ? (args.actionOverride as any) : undefined,
-      },
-    });
-    return this.toDto(row);
-  }
-
-  async markApplied(_orgId: string, id: string): Promise<void> {
-    const prisma = getPrisma();
-    await prisma.routingProposal.update({ where: { id }, data: { status: "APPLIED" as any } });
-  }
-
-  async list(args: {
-    orgId: string;
     status?: ProposalStatus | "PENDING";
     cursor?: string;
     limit?: number;
@@ -186,6 +123,33 @@ export class PrismaRoutingProposalRepo {
     const nextCursor = hasMore ? rows[limit - 1].id : null;
     
     return { items, nextCursor };
+  }
+
+  async setDecision(args: {
+    orgId: string;
+    id: string;
+    status: ProposalStatus;
+    decidedBy?: string | null;
+    decisionNotes?: string | null;
+    actionOverride?: unknown;
+  }): Promise<RoutingProposal> {
+    const prisma = getPrisma();
+    const row = await prisma.routingProposal.update({
+      where: { id: args.id },
+      data: {
+        status: args.status as any,
+        decidedAt: new Date(),
+        decidedBy: args.decidedBy ?? null,
+        decisionNotes: args.decisionNotes ?? null,
+        action: args.actionOverride ? JSON.stringify(args.actionOverride) : undefined,
+      },
+    });
+    return this.toDto(row);
+  }
+
+  async markApplied(_orgId: string, id: string): Promise<void> {
+    const prisma = getPrisma();
+    await prisma.routingProposal.update({ where: { id }, data: { status: "APPLIED" as any } });
   }
 
   private toDto(row: any): RoutingProposal {

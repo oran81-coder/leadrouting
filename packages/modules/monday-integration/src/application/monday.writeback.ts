@@ -1,5 +1,5 @@
 import type { MondayClient } from "../infrastructure/monday.client";
-import type { WritebackTargets } from "../../field-mapping/src/contracts/mapping.types";
+import type { WritebackTargets } from "../../../field-mapping/src/contracts/mapping.types";
 
 export type ApplyAssignmentInput = {
   boardId: string;

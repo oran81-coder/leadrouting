@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import {
   approve,
   approveAllFiltered,
@@ -20,11 +20,14 @@ import {
   type ManagerProposalDTO,
   previewRouting,
 } from "./api";
-import { OutcomesScreen } from "./OutcomesScreen";
-import { ManagerScreen } from "./ManagerScreen";
-import { AdminScreen } from "./AdminScreen";
 import { ThemeProvider, useTheme } from "./ThemeContext";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { CardSkeleton } from "./CardSkeleton";
+
+// ✨ Lazy load heavy screen components for better initial load time
+const OutcomesScreen = lazy(() => import("./OutcomesScreen").then(m => ({ default: m.OutcomesScreen })));
+const ManagerScreen = lazy(() => import("./ManagerScreen").then(m => ({ default: m.ManagerScreen })));
+const AdminScreen = lazy(() => import("./AdminScreen").then(m => ({ default: m.AdminScreen })));
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -993,11 +996,11 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
 
       <hr style={{ margin: "16px 0" }} />
 
-      {view === "outcomes" && <OutcomesScreen />}
-      
-      {view === "manager" && <ManagerScreen />}
-
-      {view === "admin" && <AdminScreen />}
+      <Suspense fallback={<div className="p-8"><CardSkeleton count={3} /></div>}>
+        {view === "outcomes" && <OutcomesScreen />}
+        {view === "manager" && <ManagerScreen />}
+        {view === "admin" && <AdminScreen />}
+      </Suspense>
 
       {/* OLD ADMIN CODE - TO BE REMOVED
       {view === "admin" ? (

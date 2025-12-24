@@ -1,7 +1,7 @@
 import type { InternalSchema, EntityType } from "../../../../core/src/schema/internalSchema";
 import { getActiveFieldsByEntity } from "../../../../core/src/schema/internalSchema";
 import type { FieldMappingConfig } from "../contracts/mapping.types";
-import type { MondayBoardId, MondayBoardSample, MondayItem } from "../../monday-integration/src/contracts/monday.types";
+import type { MondayBoardId, MondayBoardSample, MondayItem } from "../../../monday-integration/src/contracts/monday.types";
 import { extractRawFromColumnValue } from "../../../monday-integration/src/application/monday.extractors";
 
 /**

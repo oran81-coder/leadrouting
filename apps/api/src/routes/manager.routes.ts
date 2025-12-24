@@ -149,7 +149,7 @@ export function managerRoutes() {
     entityType: "RoutingProposal",
     entityId: id,
     before: null,
-    after: { assigneeValue: overrideResolvedValue, applyNow },
+    after: { assigneeValue: String(newValue), applyNow },
   });
 
   if (!applyNow) {
@@ -297,7 +297,7 @@ r.post("/proposals/approve-all", async (req, res) => {
   let processed = 0;
 
   while (processed < maxTotal) {
-    const page = await proposalRepo.list({
+    const page: { items: any[]; nextCursor: string | null } = await proposalRepo.list({
       orgId: ORG_ID,
       status: status as any,
       limit: Math.min(pageSize, maxTotal - processed),

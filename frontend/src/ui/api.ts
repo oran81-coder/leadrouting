@@ -37,14 +37,23 @@ export function getApiBase(): string {
   return (localStorage.getItem("apiBase") || DEFAULT_API_BASE).trim();
 }
 
+// Get auth token (imported dynamically to avoid circular dependency)
+function getAuthToken(): string | null {
+  return localStorage.getItem("lead_routing_access_token");
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
+  const token = getAuthToken();
+  
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers || {}),
       ...(getApiKey() ? { "x-api-key": getApiKey() } : {}),
+      // Add JWT token if available (Phase 5.1)
+      ...(token ? { "Authorization": `Bearer ${token}` } : {}),
     },
   });
   const json = await res.json().catch(() => ({}));

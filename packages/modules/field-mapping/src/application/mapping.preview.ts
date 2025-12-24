@@ -1,9 +1,9 @@
 import type { FieldMappingConfig } from "../contracts/mapping.types";
 import type { InternalSchema, EntityType } from "../../../../core/src/schema/internalSchema";
 import { normalizeEntityRecord } from "../../../../core/src/schema/normalization";
-import type { MondayBoardSample } from "../../monday-integration/src/contracts/monday.types";
+import type { MondayBoardSample } from "../../../monday-integration/src/contracts/monday.types";
 import { buildCompositeRawByInternalFieldId, indexSamples, collectReferencedBoardIds } from "./mapping.raw";
-import type { MondayClient } from "../../monday-integration/src/infrastructure/monday.client";
+import type { MondayClient } from "../../../monday-integration/src/infrastructure/monday.client";
 
 export interface PreviewRow {
   entity: EntityType;
