@@ -121,6 +121,21 @@ export class MockMondayClient {
   }
 
   /**
+   * List all boards (compatible with MondayClient interface)
+   */
+  async listBoards(): Promise<MondayBoard[]> {
+    this.callCount++;
+    
+    if (this.shouldFail) {
+      const error = new Error(this.failureMessage);
+      this.shouldFail = false;
+      throw error;
+    }
+
+    return mockBoards;
+  }
+
+  /**
    * Mock GraphQL query
    */
   async query(query: string, variables?: Record<string, any>): Promise<any> {

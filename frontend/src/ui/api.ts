@@ -265,3 +265,73 @@ export async function getOutcomesSummary(params: {
   if (params.boardId) q.set("boardId", params.boardId);
   return await http<OutcomesSummaryDTO>(`/outcomes/summary?${q.toString()}`);
 }
+
+// ============================================================================
+// Field Mapping API
+// ============================================================================
+
+export interface BoardColumnRef {
+  boardId: string;
+  columnId: string;
+  columnType?: string;
+}
+
+export interface InternalFieldDefinition {
+  id: string;
+  label: string;
+  type: string;
+  required: boolean;
+  isCore: boolean;
+  isEnabled: boolean;
+  description?: string;
+  group?: string;
+}
+
+export interface WritebackTargets {
+  assignedAgent: BoardColumnRef;
+  routingStatus?: BoardColumnRef;
+  routingReason?: BoardColumnRef;
+}
+
+export interface FieldMappingConfig {
+  version: number;
+  updatedAt: string;
+  mappings: Record<string, BoardColumnRef>;
+  fields: InternalFieldDefinition[];
+  writebackTargets: WritebackTargets;
+}
+
+export async function getMappingConfig(): Promise<FieldMappingConfig | null> {
+  const data = await http<{ config: FieldMappingConfig | null }>(`/mapping`);
+  return data.config;
+}
+
+export async function saveMappingConfig(config: FieldMappingConfig): Promise<{ version: number }> {
+  const data = await http<{ ok: boolean; version: number }>(`/mapping`, {
+    method: "POST",
+    body: JSON.stringify({ config }),
+  });
+  return { version: data.version };
+}
+
+export async function getMappingBoards(): Promise<MondayBoardDTO[]> {
+  const data = await http<{ ok: boolean; boards: MondayBoardDTO[] }>(`/monday/boards`);
+  return data.boards;
+}
+
+export interface MappingPreviewResult {
+  ok: boolean;
+  samplesRead: number;
+  normalizedSuccessfully: number;
+  errors: Array<{
+    field: string;
+    error: string;
+  }>;
+}
+
+export async function previewMapping(): Promise<MappingPreviewResult> {
+  return await http<MappingPreviewResult>(`/mapping/preview`, {
+    method: "POST",
+    body: "{}",
+  });
+}
