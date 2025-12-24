@@ -69,34 +69,46 @@ export function FieldMappingWizard() {
     async function load() {
       try {
         setLoading(true);
-        const [config, boardsData] = await Promise.all([
-          getMappingConfig(),
-          getMappingBoards()
-        ]);
-
-        setBoards(boardsData || []);
-
-        if (config) {
-          setFields(config.fields || DEFAULT_INTERNAL_FIELDS);
-          setMappings(config.mappings || {});
-          
-          // Load primary board from config
-          if (config.primaryBoardId) {
-            setPrimaryBoardId(config.primaryBoardId);
-            setPrimaryBoardName(config.primaryBoardName || "");
+        
+        // Try to fetch boards first - this requires Monday connection in non-mock mode
+        try {
+          const boardsData = await getMappingBoards();
+          setBoards(boardsData || []);
+        } catch (boardError: any) {
+          console.error("Failed to load boards:", boardError);
+          showToast("⚠️ Monday not connected. Connect in Admin → Monday Connection to use real data, or continue with mock mode.", "warning");
+          setBoards([]); // Empty boards - will show message to user
+        }
+        
+        // Try to load existing config - may not exist yet
+        try {
+          const config = await getMappingConfig();
+          if (config) {
+            setFields(config.fields || DEFAULT_INTERNAL_FIELDS);
+            setMappings(config.mappings || {});
+            
+            // Load primary board from config
+            if (config.primaryBoardId) {
+              setPrimaryBoardId(config.primaryBoardId);
+              setPrimaryBoardName(config.primaryBoardName || "");
+            }
+            
+            // Load status config
+            if (config.statusConfig) {
+              setStatusConfig(config.statusConfig);
+            }
+            
+            if (config.writebackTargets?.assignedAgent) {
+              setWritebackTargets({ assignedAgent: config.writebackTargets.assignedAgent });
+            }
           }
-          
-          // Load status config
-          if (config.statusConfig) {
-            setStatusConfig(config.statusConfig);
-          }
-          
-          if (config.writebackTargets?.assignedAgent) {
-            setWritebackTargets({ assignedAgent: config.writebackTargets.assignedAgent });
-          }
+        } catch (configError: any) {
+          console.error("No existing config:", configError);
+          // It's OK if config doesn't exist yet - user is setting it up for first time
         }
       } catch (error: any) {
-        showToast(`Error loading configuration: ${error.message}`, "error");
+        console.error("Error in load:", error);
+        showToast(`Error initializing: ${error.message}`, "error");
       } finally {
         setLoading(false);
       }
@@ -344,6 +356,29 @@ export function FieldMappingWizard() {
             </p>
 
             <div className="space-y-4">
+              {/* Warning if no boards */}
+              {boards.length === 0 && (
+                <div className={`p-4 rounded-lg border ${
+                  isDark ? "bg-yellow-900/20 border-yellow-800" : "bg-yellow-50 border-yellow-300"
+                }`}>
+                  <div className="flex items-start">
+                    <span className="text-2xl mr-3">⚠️</span>
+                    <div className="flex-1">
+                      <div className={`font-medium mb-2 ${isDark ? "text-yellow-400" : "text-yellow-700"}`}>
+                        Monday.com Not Connected
+                      </div>
+                      <div className={`text-sm ${isDark ? "text-yellow-300" : "text-yellow-600"}`}>
+                        Please connect to Monday.com in <strong>Admin → Monday Connection</strong> to view your boards.
+                        <br />
+                        <span className="text-xs mt-1 block">
+                          The system is configured with MONDAY_USE_MOCK=true for development.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div>
                 <label className={`block text-sm font-medium mb-2 ${
                   isDark ? "text-gray-300" : "text-gray-700"
