@@ -276,6 +276,11 @@ export interface BoardColumnRef {
   columnType?: string;
 }
 
+export interface ColumnRef {
+  columnId: string;
+  columnType?: string;
+}
+
 export interface InternalFieldDefinition {
   id: string;
   label: string;
@@ -287,6 +292,11 @@ export interface InternalFieldDefinition {
   group?: string;
 }
 
+export interface StatusConfig {
+  inTreatmentStatuses: string[];
+  closedWonStatus: string;
+}
+
 export interface WritebackTargets {
   assignedAgent: BoardColumnRef;
   routingStatus?: BoardColumnRef;
@@ -296,9 +306,12 @@ export interface WritebackTargets {
 export interface FieldMappingConfig {
   version: number;
   updatedAt: string;
-  mappings: Record<string, BoardColumnRef>;
+  primaryBoardId?: string; // Phase 2: Single Board
+  primaryBoardName?: string;
+  mappings: Record<string, BoardColumnRef | ColumnRef>;
   fields: InternalFieldDefinition[];
   writebackTargets: WritebackTargets;
+  statusConfig?: StatusConfig; // Phase 2: Smart automation
 }
 
 export async function getMappingConfig(): Promise<FieldMappingConfig | null> {

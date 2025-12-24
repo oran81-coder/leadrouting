@@ -79,6 +79,8 @@ model RoutingSettings {
   orgId     String   @unique
   // enum-like: "AUTO" | "MANUAL_APPROVAL"
   mode      String   @default("MANUAL_APPROVAL")
+  // Phase 2: Daily lead threshold for availability calculation
+  dailyLeadThreshold Int @default(20)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

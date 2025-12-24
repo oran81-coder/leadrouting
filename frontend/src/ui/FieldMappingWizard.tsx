@@ -6,27 +6,31 @@ import {
   saveMappingConfig, 
   getMappingBoards,
   previewMapping,
+  listMondayStatusLabels,
   type FieldMappingConfig, 
   type InternalFieldDefinition,
   type BoardColumnRef,
+  type ColumnRef,
+  type StatusConfig,
   type MondayBoardDTO,
+  type MondayColumnDTO,
   type MappingPreviewResult
 } from "./api";
 import { Skeleton } from "./Skeleton";
 import { EmptyState } from "./EmptyState";
+import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 
-// Default internal fields (Phase 1 - statically defined)
+// Default internal fields (Phase 2 - with computed fields)
 const DEFAULT_INTERNAL_FIELDS: InternalFieldDefinition[] = [
-  { id: "lead_source", label: "Lead Source", type: "status", required: true, isCore: true, isEnabled: true, group: "Lead" },
-  { id: "lead_industry", label: "Industry", type: "status", required: false, isCore: true, isEnabled: true, group: "Lead" },
-  { id: "lead_deal_size", label: "Deal Size / Amount", type: "number", required: false, isCore: true, isEnabled: true, group: "Lead" },
-  { id: "lead_created_at", label: "Created At", type: "date", required: true, isCore: true, isEnabled: true, group: "Lead" },
-  { id: "agent_domain", label: "Agent Domain", type: "status", required: false, isCore: true, isEnabled: true, group: "Agent" },
-  { id: "agent_availability", label: "Availability", type: "status", required: true, isCore: true, isEnabled: true, group: "Agent" },
-  { id: "agent_workload", label: "Workload", type: "number", required: false, isCore: true, isEnabled: true, group: "Agent" },
-  { id: "deal_status", label: "Deal Status", type: "status", required: true, isCore: true, isEnabled: true, group: "Deal" },
-  { id: "deal_close_date", label: "Close Date", type: "date", required: false, isCore: true, isEnabled: true, group: "Deal" },
-  { id: "deal_amount", label: "Deal Amount", type: "number", required: false, isCore: true, isEnabled: true, group: "Deal" },
+  { id: "lead_source", label: "Lead Source", type: "status", required: true, isCore: true, isEnabled: true, group: "Lead", description: "Source/campaign of the lead" },
+  { id: "lead_industry", label: "Industry", type: "status", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Industry/vertical of the lead" },
+  { id: "lead_deal_size", label: "Deal Size / Amount", type: "number", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Potential deal value" },
+  { id: "lead_created_at", label: "Created At (Auto)", type: "date", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Automatically captured from Monday item creation time" },
+  { id: "agent_domain", label: "Agent Domain (Optional)", type: "status", required: false, isCore: true, isEnabled: true, group: "Agent", description: "Optional: Map to Monday column OR system learns from Industry Performance metrics" },
+  { id: "agent_availability", label: "Availability (Auto-Calculated)", type: "computed", required: false, isCore: true, isEnabled: true, group: "Agent", description: "Calculated automatically from leads in-treatment count and daily quota" },
+  { id: "deal_status", label: "Deal Status", type: "status", required: true, isCore: true, isEnabled: true, group: "Deal", description: "Current status of the deal" },
+  { id: "deal_close_date", label: "Close Date (Optional Column)", type: "date", required: false, isCore: true, isEnabled: true, group: "Deal", description: "Optional: If column exists, use it. Otherwise, use status change timestamp" },
+  { id: "deal_amount", label: "Deal Amount", type: "number", required: false, isCore: true, isEnabled: true, group: "Deal", description: "Final deal value" },
 ];
 
 export function FieldMappingWizard() {
@@ -39,12 +43,24 @@ export function FieldMappingWizard() {
   const [saving, setSaving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
 
+  // Phase 2: Single Board Architecture
+  const [primaryBoardId, setPrimaryBoardId] = useState<string>("");
+  const [primaryBoardName, setPrimaryBoardName] = useState<string>("");
   const [boards, setBoards] = useState<MondayBoardDTO[]>([]);
+  
   const [fields, setFields] = useState<InternalFieldDefinition[]>(DEFAULT_INTERNAL_FIELDS);
-  const [mappings, setMappings] = useState<Record<string, BoardColumnRef>>({});
+  const [mappings, setMappings] = useState<Record<string, ColumnRef | BoardColumnRef>>({});
   const [writebackTargets, setWritebackTargets] = useState<{
     assignedAgent: BoardColumnRef | null;
   }>({ assignedAgent: null });
+  
+  // Phase 2: Status Configuration
+  const [statusConfig, setStatusConfig] = useState<StatusConfig>({
+    inTreatmentStatuses: [],
+    closedWonStatus: ""
+  });
+  const [statusLabels, setStatusLabels] = useState<string[]>([]);
+  const [loadingStatusLabels, setLoadingStatusLabels] = useState(false);
   
   const [previewResult, setPreviewResult] = useState<MappingPreviewResult | null>(null);
 
@@ -63,6 +79,18 @@ export function FieldMappingWizard() {
         if (config) {
           setFields(config.fields || DEFAULT_INTERNAL_FIELDS);
           setMappings(config.mappings || {});
+          
+          // Load primary board from config
+          if (config.primaryBoardId) {
+            setPrimaryBoardId(config.primaryBoardId);
+            setPrimaryBoardName(config.primaryBoardName || "");
+          }
+          
+          // Load status config
+          if (config.statusConfig) {
+            setStatusConfig(config.statusConfig);
+          }
+          
           if (config.writebackTargets?.assignedAgent) {
             setWritebackTargets({ assignedAgent: config.writebackTargets.assignedAgent });
           }
@@ -76,27 +104,60 @@ export function FieldMappingWizard() {
     load();
   }, [showToast]);
 
-  const handleMappingChange = (fieldId: string, boardId: string, columnId: string) => {
+  // Load status labels when primaryBoardId and deal_status mapping change
+  useEffect(() => {
+    async function loadStatusLabels() {
+      if (!primaryBoardId || !mappings.deal_status) return;
+      
+      try {
+        setLoadingStatusLabels(true);
+        const columnId = (mappings.deal_status as any).columnId;
+        const labels = await listMondayStatusLabels(primaryBoardId, columnId);
+        setStatusLabels(labels.map(l => l.label));
+      } catch (error: any) {
+        console.error("Failed to load status labels:", error);
+      } finally {
+        setLoadingStatusLabels(false);
+      }
+    }
+    loadStatusLabels();
+  }, [primaryBoardId, mappings.deal_status]);
+
+  const selectedBoard = boards.find(b => b.id === primaryBoardId);
+
+  const handleBoardSelect = (boardId: string) => {
     const board = boards.find(b => b.id === boardId);
-    const column = board?.columns.find(c => c.id === columnId);
+    if (board) {
+      setPrimaryBoardId(boardId);
+      setPrimaryBoardName(board.name);
+      // Clear existing mappings when board changes
+      setMappings({});
+      setWritebackTargets({ assignedAgent: null });
+    }
+  };
+
+  const handleMappingChange = (fieldId: string, columnId: string) => {
+    if (!primaryBoardId) return;
+    
+    const column = selectedBoard?.columns.find(c => c.id === columnId);
     
     setMappings(prev => ({
       ...prev,
       [fieldId]: {
-        boardId,
         columnId,
         columnType: column?.type
       }
     }));
   };
 
-  const handleWritebackChange = (boardId: string, columnId: string) => {
-    const board = boards.find(b => b.id === boardId);
-    const column = board?.columns.find(c => c.id === columnId);
+  const handleWritebackChange = (columnId: string) => {
+    if (!primaryBoardId) return;
+    
+    const column = selectedBoard?.columns.find(c => c.id === columnId);
     
     setWritebackTargets({
       assignedAgent: {
-        boardId,
+        boardId: primaryBoardId,
         columnId,
         columnType: column?.type
       }
@@ -105,17 +166,32 @@ export function FieldMappingWizard() {
 
   const validateMappings = (): string[] => {
     const errors: string[] = [];
+    
+    if (!primaryBoardId) {
+      errors.push("Primary board must be selected");
+      return errors;
+    }
+    
     const enabledFields = fields.filter(f => f.isEnabled);
-    const requiredFields = enabledFields.filter(f => f.required);
+    const requiredFields = enabledFields.filter(f => f.required && f.type !== "computed");
 
     for (const field of requiredFields) {
-      if (!mappings[field.id]?.boardId || !mappings[field.id]?.columnId) {
+      if (!mappings[field.id]?.columnId) {
         errors.push(`Required field "${field.label}" must be mapped`);
       }
     }
 
     if (!writebackTargets.assignedAgent) {
       errors.push("Writeback target for 'Assigned Agent' must be configured");
+    }
+    
+    if (step >= 4) {
+      if (statusConfig.inTreatmentStatuses.length === 0) {
+        errors.push("At least one 'In Treatment' status must be selected");
+      }
+      if (!statusConfig.closedWonStatus) {
+        errors.push("'Deal Won' status must be selected");
+      }
     }
 
     return errors;
@@ -149,20 +225,20 @@ export function FieldMappingWizard() {
     try {
       setSaving(true);
       const config: FieldMappingConfig = {
-        version: 1,
+        version: 2,
         updatedAt: new Date().toISOString(),
+        primaryBoardId,
+        primaryBoardName,
         mappings,
         fields,
         writebackTargets: {
           assignedAgent: writebackTargets.assignedAgent!
-        }
+        },
+        statusConfig
       };
 
       const result = await saveMappingConfig(config);
       showToast(`Mapping configuration saved successfully (v${result.version})`, "success");
-      
-      // Go to preview step
-      setStep(3);
     } catch (error: any) {
       showToast(`Failed to save configuration: ${error.message}`, "error");
     } finally {
@@ -196,8 +272,10 @@ export function FieldMappingWizard() {
   }
 
   const enabledFields = fields.filter(f => f.isEnabled);
-  const requiredFields = enabledFields.filter(f => f.required);
-  const optionalFields = enabledFields.filter(f => !f.required);
+  const manualFields = enabledFields.filter(f => f.type !== "computed");
+  const computedFields = enabledFields.filter(f => f.type === "computed");
+  const requiredManualFields = manualFields.filter(f => f.required);
+  const optionalManualFields = manualFields.filter(f => !f.required);
 
   return (
     <div className={`min-h-screen p-8 ${isDark ? "bg-gray-900" : "bg-gray-50"}`}>
@@ -208,20 +286,22 @@ export function FieldMappingWizard() {
             📋 Field Mapping Wizard
           </h1>
           <p className={`text-lg ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-            Map internal fields to Monday.com columns
+            Map internal fields to Monday.com columns (Single Board Architecture)
           </p>
         </div>
 
         {/* Progress Steps */}
-        <div className="mb-8 flex items-center justify-center space-x-4">
+        <div className="mb-8 flex items-center justify-center space-x-2 overflow-x-auto">
           {[
-            { num: 1, label: "Select Fields" },
-            { num: 2, label: "Map Columns" },
-            { num: 3, label: "Preview & Save" }
+            { num: 1, label: "Select Board" },
+            { num: 2, label: "Review Fields" },
+            { num: 3, label: "Map Columns" },
+            { num: 4, label: "Configure Statuses" },
+            { num: 5, label: "Preview & Save" }
           ].map((s, idx) => (
             <React.Fragment key={s.num}>
-              <div className="flex items-center">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+              <div className="flex items-center min-w-fit">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm ${
                   step >= s.num
                     ? "bg-blue-600 text-white"
                     : isDark
@@ -230,7 +310,7 @@ export function FieldMappingWizard() {
                 }`}>
                   {s.num}
                 </div>
-                <span className={`ml-2 font-medium ${
+                <span className={`ml-2 font-medium text-sm ${
                   step >= s.num
                     ? isDark ? "text-white" : "text-gray-900"
                     : isDark ? "text-gray-500" : "text-gray-400"
@@ -238,8 +318,8 @@ export function FieldMappingWizard() {
                   {s.label}
                 </span>
               </div>
-              {idx < 2 && (
-                <div className={`w-24 h-1 ${
+              {idx < 4 && (
+                <div className={`w-16 h-1 ${
                   step > s.num
                     ? "bg-blue-600"
                     : isDark ? "bg-gray-700" : "bg-gray-200"
@@ -249,63 +329,169 @@ export function FieldMappingWizard() {
           ))}
         </div>
 
-        {/* Step 1: Select Fields */}
+        {/* Step 1: Select Primary Board */}
         {step === 1 && (
           <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border ${
             isDark ? "border-gray-700" : "border-gray-200"
           } p-6`}>
             <h2 className={`text-xl font-semibold mb-4 ${isDark ? "text-white" : "text-gray-900"}`}>
-              Step 1: Select Internal Fields
+              Step 1: Select Primary Board
             </h2>
             <p className={`mb-6 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-              These are the internal fields that will be mapped to Monday.com columns.
+              Choose the Monday.com board that contains all your leads.
               <br />
-              <span className="text-sm">✅ = Required field | ⭕ = Optional field</span>
+              All internal fields will map to columns in this board.
             </p>
 
-            <div className="space-y-6">
-              {/* Group by entity */}
-              {["Lead", "Agent", "Deal"].map(group => {
-                const groupFields = enabledFields.filter(f => f.group === group);
-                if (groupFields.length === 0) return null;
+            <div className="space-y-4">
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${
+                  isDark ? "text-gray-300" : "text-gray-700"
+                }`}>
+                  Primary Board
+                </label>
+                <select
+                  value={primaryBoardId}
+                  onChange={(e) => handleBoardSelect(e.target.value)}
+                  className={`w-full px-4 py-3 rounded-lg border ${
+                    isDark
+                      ? "bg-gray-800 border-gray-600 text-white"
+                      : "bg-white border-gray-300 text-gray-900"
+                  } focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
+                >
+                  <option value="">Select Board...</option>
+                  {boards.map(board => (
+                    <option key={board.id} value={board.id}>{board.name}</option>
+                  ))}
+                </select>
+              </div>
 
-                return (
-                  <div key={group}>
-                    <h3 className={`text-lg font-medium mb-3 ${isDark ? "text-gray-300" : "text-gray-700"}`}>
-                      {group} Fields
-                    </h3>
-                    <div className="space-y-2">
-                      {groupFields.map(field => (
-                        <div
-                          key={field.id}
-                          className={`flex items-center p-3 rounded-lg border ${
-                            isDark
-                              ? "bg-gray-700 border-gray-600"
-                              : "bg-gray-50 border-gray-200"
-                          }`}
-                        >
-                          <span className="text-2xl mr-3">
-                            {field.required ? "✅" : "⭕"}
-                          </span>
-                          <div className="flex-1">
-                            <div className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
-                              {field.label}
-                            </div>
-                            <div className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-                              Type: {field.type} {field.required && "• Required"}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              {primaryBoardId && selectedBoard && (
+                <div className={`p-4 rounded-lg border ${
+                  isDark ? "bg-gray-700 border-gray-600" : "bg-blue-50 border-blue-200"
+                }`}>
+                  <div className={`font-medium mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>
+                    ✅ Selected Board: {selectedBoard.name}
                   </div>
-                );
-              })}
+                  <div className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                    📊 {selectedBoard.columns.length} columns available
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-8 flex justify-end">
               <button
                 onClick={() => setStep(2)}
+                disabled={!primaryBoardId}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next: Review Fields →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Review Internal Fields */}
+        {step === 2 && (
+          <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border ${
+            isDark ? "border-gray-700" : "border-gray-200"
+          } p-6`}>
+            <h2 className={`text-xl font-semibold mb-4 ${isDark ? "text-white" : "text-gray-900"}`}>
+              Step 2: Review Internal Fields
+            </h2>
+            <p className={`mb-6 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+              These are the internal fields used by the routing system.
+              <br />
+              <span className="text-sm">🔵 Manual Mapping Required | 🟢 Auto-Calculated | ⭕ Optional</span>
+            </p>
+
+            <div className="space-y-6">
+              {/* Manual Fields */}
+              {manualFields.length > 0 && (
+                <div>
+                  <h3 className={`text-lg font-medium mb-3 ${isDark ? "text-blue-400" : "text-blue-600"}`}>
+                    🔵 Manual Mapping Required
+                  </h3>
+                  <div className="space-y-2">
+                    {manualFields.map(field => (
+                      <div
+                        key={field.id}
+                        className={`flex items-start p-3 rounded-lg border ${
+                          isDark
+                            ? "bg-gray-700 border-gray-600"
+                            : "bg-gray-50 border-gray-200"
+                        }`}
+                      >
+                        <span className="text-2xl mr-3">
+                          {field.required ? "🔵" : "⭕"}
+                        </span>
+                        <div className="flex-1">
+                          <div className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
+                            {field.label}
+                          </div>
+                          <div className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                            Type: {field.type} {field.required && "• Required"}
+                          </div>
+                          {field.description && (
+                            <div className={`text-sm mt-1 ${isDark ? "text-gray-500" : "text-gray-500"}`}>
+                              {field.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Auto-Calculated Fields */}
+              {computedFields.length > 0 && (
+                <div>
+                  <h3 className={`text-lg font-medium mb-3 ${isDark ? "text-green-400" : "text-green-600"}`}>
+                    🟢 Auto-Calculated Fields (No Mapping Needed)
+                  </h3>
+                  <div className="space-y-2">
+                    {computedFields.map(field => (
+                      <div
+                        key={field.id}
+                        className={`flex items-start p-3 rounded-lg border ${
+                          isDark
+                            ? "bg-green-900/20 border-green-800"
+                            : "bg-green-50 border-green-200"
+                        }`}
+                      >
+                        <span className="text-2xl mr-3">🟢</span>
+                        <div className="flex-1">
+                          <div className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
+                            {field.label}
+                          </div>
+                          {field.description && (
+                            <div className={`text-sm mt-1 ${isDark ? "text-green-400" : "text-green-700"}`}>
+                              ℹ️ {field.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 flex justify-between">
+              <button
+                onClick={() => setStep(1)}
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                  isDark
+                    ? "bg-gray-700 text-white hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-900 hover:bg-gray-300"
+                }`}
+              >
+                ← Back
+              </button>
+              <button
+                onClick={() => setStep(3)}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
               >
                 Next: Map Columns →
@@ -314,21 +500,21 @@ export function FieldMappingWizard() {
           </div>
         )}
 
-        {/* Step 2: Map Columns */}
-        {step === 2 && (
+        {/* Step 3: Map Columns */}
+        {step === 3 && (
           <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border ${
             isDark ? "border-gray-700" : "border-gray-200"
           } p-6`}>
             <h2 className={`text-xl font-semibold mb-4 ${isDark ? "text-white" : "text-gray-900"}`}>
-              Step 2: Map to Monday.com Columns
+              Step 3: Map to Monday.com Columns
             </h2>
             <p className={`mb-6 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-              Select which Monday.com board and column each internal field maps to.
+              Select which column in <strong>{primaryBoardName}</strong> each internal field maps to.
             </p>
 
             <div className="space-y-6">
-              {/* Required Fields First */}
-              {requiredFields.length > 0 && (
+              {/* Required Manual Fields */}
+              {requiredManualFields.length > 0 && (
                 <div>
                   <h3 className={`text-lg font-medium mb-3 flex items-center ${
                     isDark ? "text-red-400" : "text-red-600"
@@ -336,13 +522,13 @@ export function FieldMappingWizard() {
                     <span className="mr-2">⚠️</span> Required Fields
                   </h3>
                   <div className="space-y-4">
-                    {requiredFields.map(field => (
-                      <FieldMappingRow
+                    {requiredManualFields.map(field => (
+                      <ColumnMappingRow
                         key={field.id}
                         field={field}
-                        boards={boards}
+                        columns={selectedBoard?.columns || []}
                         mapping={mappings[field.id]}
-                        onChange={(boardId, columnId) => handleMappingChange(field.id, boardId, columnId)}
+                        onChange={(columnId) => handleMappingChange(field.id, columnId)}
                         isDark={isDark}
                       />
                     ))}
@@ -350,20 +536,20 @@ export function FieldMappingWizard() {
                 </div>
               )}
 
-              {/* Optional Fields */}
-              {optionalFields.length > 0 && (
+              {/* Optional Manual Fields */}
+              {optionalManualFields.length > 0 && (
                 <div>
                   <h3 className={`text-lg font-medium mb-3 ${isDark ? "text-gray-300" : "text-gray-700"}`}>
                     Optional Fields
                   </h3>
                   <div className="space-y-4">
-                    {optionalFields.map(field => (
-                      <FieldMappingRow
+                    {optionalManualFields.map(field => (
+                      <ColumnMappingRow
                         key={field.id}
                         field={field}
-                        boards={boards}
+                        columns={selectedBoard?.columns || []}
                         mapping={mappings[field.id]}
-                        onChange={(boardId, columnId) => handleMappingChange(field.id, boardId, columnId)}
+                        onChange={(columnId) => handleMappingChange(field.id, columnId)}
                         isDark={isDark}
                       />
                     ))}
@@ -381,17 +567,10 @@ export function FieldMappingWizard() {
                 <p className={`text-sm mb-4 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
                   Specify where routing results will be written back to Monday.com
                 </p>
-                <FieldMappingRow
-                  field={{
-                    id: "writeback_assigned_agent",
-                    label: "Assigned Agent Column",
-                    type: "people",
-                    required: true,
-                    isCore: true,
-                    isEnabled: true
-                  }}
-                  boards={boards}
-                  mapping={writebackTargets.assignedAgent || undefined}
+                <WritebackMappingRow
+                  label="Assigned Agent Column"
+                  columns={selectedBoard?.columns || []}
+                  mapping={writebackTargets.assignedAgent}
                   onChange={handleWritebackChange}
                   isDark={isDark}
                 />
@@ -400,7 +579,7 @@ export function FieldMappingWizard() {
 
             <div className="mt-8 flex justify-between">
               <button
-                onClick={() => setStep(1)}
+                onClick={() => setStep(2)}
                 className={`px-6 py-2 rounded-lg font-medium transition-colors ${
                   isDark
                     ? "bg-gray-700 text-white hover:bg-gray-600"
@@ -410,8 +589,114 @@ export function FieldMappingWizard() {
                 ← Back
               </button>
               <button
-                onClick={() => setStep(3)}
+                onClick={() => setStep(4)}
                 disabled={validateMappings().length > 0}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next: Configure Statuses →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Configure Status Values */}
+        {step === 4 && (
+          <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border ${
+            isDark ? "border-gray-700" : "border-gray-200"
+          } p-6`}>
+            <h2 className={`text-xl font-semibold mb-4 ${isDark ? "text-white" : "text-gray-900"}`}>
+              Step 4: Configure Status Values
+            </h2>
+            <p className={`mb-6 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+              Configure which status values indicate different lead states.
+            </p>
+
+            <div className="space-y-6">
+              {/* In-Treatment Statuses */}
+              <div className={`p-4 rounded-lg border ${
+                isDark ? "bg-gray-700 border-gray-600" : "bg-orange-50 border-orange-200"
+              }`}>
+                <h3 className={`text-lg font-medium mb-2 flex items-center ${
+                  isDark ? "text-orange-400" : "text-orange-700"
+                }`}>
+                  <span className="mr-2">⚠️</span> Leads "In Treatment" Statuses
+                </h3>
+                <p className={`text-sm mb-4 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  Select which status values indicate a lead is being actively handled by an agent.
+                  <br />
+                  These are used to calculate agent availability.
+                </p>
+                
+                {loadingStatusLabels ? (
+                  <Skeleton className="h-12 w-full" />
+                ) : (
+                  <MultiSelectDropdown
+                    options={statusLabels}
+                    selected={statusConfig.inTreatmentStatuses}
+                    onChange={(selected) => setStatusConfig(prev => ({ ...prev, inTreatmentStatuses: selected }))}
+                    placeholder="Select statuses..."
+                  />
+                )}
+                
+                <div className={`mt-3 text-sm ${isDark ? "text-gray-500" : "text-gray-500"}`}>
+                  💡 Example: "Relevant", "In Treatment", "No Answer", "Follow Up", "Pending"
+                </div>
+              </div>
+
+              {/* Closed Won Status */}
+              <div className={`p-4 rounded-lg border ${
+                isDark ? "bg-gray-700 border-gray-600" : "bg-green-50 border-green-200"
+              }`}>
+                <h3 className={`text-lg font-medium mb-2 flex items-center ${
+                  isDark ? "text-green-400" : "text-green-700"
+                }`}>
+                  <span className="mr-2">✅</span> "Deal Won" Status
+                </h3>
+                <p className={`text-sm mb-4 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  Select the status that indicates a deal was successfully closed.
+                  <br />
+                  Used to automatically determine close date when no Close Date column is mapped.
+                </p>
+                
+                {loadingStatusLabels ? (
+                  <Skeleton className="h-12 w-full" />
+                ) : (
+                  <select
+                    value={statusConfig.closedWonStatus}
+                    onChange={(e) => setStatusConfig(prev => ({ ...prev, closedWonStatus: e.target.value }))}
+                    className={`w-full px-4 py-3 rounded-lg border ${
+                      isDark
+                        ? "bg-gray-800 border-gray-600 text-white"
+                        : "bg-white border-gray-300 text-gray-900"
+                    } focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
+                  >
+                    <option value="">Select status...</option>
+                    {statusLabels.map(label => (
+                      <option key={label} value={label}>{label}</option>
+                    ))}
+                  </select>
+                )}
+                
+                <div className={`mt-3 text-sm ${isDark ? "text-gray-500" : "text-gray-500"}`}>
+                  💡 Example: "Sale Completed", "Closed Won", "Done"
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex justify-between">
+              <button
+                onClick={() => setStep(3)}
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                  isDark
+                    ? "bg-gray-700 text-white hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-900 hover:bg-gray-300"
+                }`}
+              >
+                ← Back
+              </button>
+              <button
+                onClick={() => setStep(5)}
+                disabled={!statusConfig.closedWonStatus || statusConfig.inTreatmentStatuses.length === 0}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next: Preview →
@@ -420,17 +705,60 @@ export function FieldMappingWizard() {
           </div>
         )}
 
-        {/* Step 3: Preview & Save */}
-        {step === 3 && (
+        {/* Step 5: Preview & Save */}
+        {step === 5 && (
           <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border ${
             isDark ? "border-gray-700" : "border-gray-200"
           } p-6`}>
             <h2 className={`text-xl font-semibold mb-4 ${isDark ? "text-white" : "text-gray-900"}`}>
-              Step 3: Preview & Save Configuration
+              Step 5: Preview & Save Configuration
             </h2>
             <p className={`mb-6 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-              Review your mappings and test with sample data before saving.
+              Review your configuration and test with sample data before saving.
             </p>
+
+            {/* Configuration Summary */}
+            <div className="space-y-4 mb-6">
+              <div className={`p-4 rounded-lg border ${
+                isDark ? "bg-gray-700 border-gray-600" : "bg-blue-50 border-blue-200"
+              }`}>
+                <h3 className={`font-medium mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>
+                  📋 Primary Board
+                </h3>
+                <div className={`text-sm ${isDark ? "text-gray-300" : "text-gray-700"}`}>
+                  {primaryBoardName} ({selectedBoard?.columns.length} columns)
+                </div>
+              </div>
+
+              <div className={`p-4 rounded-lg border ${
+                isDark ? "bg-gray-700 border-gray-600" : "bg-blue-50 border-blue-200"
+              }`}>
+                <h3 className={`font-medium mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>
+                  🔗 Mapped Fields
+                </h3>
+                <div className={`text-sm space-y-1 ${isDark ? "text-gray-300" : "text-gray-700"}`}>
+                  {Object.entries(mappings).map(([fieldId, mapping]) => {
+                    const field = fields.find(f => f.id === fieldId);
+                    const column = selectedBoard?.columns.find(c => c.id === (mapping as any).columnId);
+                    return field && column ? (
+                      <div key={fieldId}>• {field.label} → {column.title}</div>
+                    ) : null;
+                  })}
+                </div>
+              </div>
+
+              <div className={`p-4 rounded-lg border ${
+                isDark ? "bg-gray-700 border-gray-600" : "bg-green-50 border-green-200"
+              }`}>
+                <h3 className={`font-medium mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>
+                  🎯 Status Configuration
+                </h3>
+                <div className={`text-sm space-y-1 ${isDark ? "text-gray-300" : "text-gray-700"}`}>
+                  <div>• In Treatment: {statusConfig.inTreatmentStatuses.join(", ")}</div>
+                  <div>• Deal Won: {statusConfig.closedWonStatus}</div>
+                </div>
+              </div>
+            </div>
 
             {/* Validation Summary */}
             <div className={`mb-6 p-4 rounded-lg ${
@@ -449,7 +777,7 @@ export function FieldMappingWizard() {
                       : isDark ? "text-red-400" : "text-red-700"
                   }`}>
                     {validateMappings().length === 0
-                      ? "All Required Fields Mapped"
+                      ? "Configuration Valid - Ready to Save"
                       : `${validateMappings().length} Issue(s) Found`}
                   </div>
                   {validateMappings().length > 0 && (
@@ -505,7 +833,7 @@ export function FieldMappingWizard() {
 
             <div className="mt-8 flex justify-between">
               <button
-                onClick={() => setStep(2)}
+                onClick={() => setStep(4)}
                 className={`px-6 py-2 rounded-lg font-medium transition-colors ${
                   isDark
                     ? "bg-gray-700 text-white hover:bg-gray-600"
@@ -529,33 +857,23 @@ export function FieldMappingWizard() {
   );
 }
 
-// Helper component for mapping rows
-interface FieldMappingRowProps {
+// Helper component for column mapping rows
+interface ColumnMappingRowProps {
   field: InternalFieldDefinition;
-  boards: MondayBoardDTO[];
-  mapping?: BoardColumnRef;
-  onChange: (boardId: string, columnId: string) => void;
+  columns: MondayColumnDTO[];
+  mapping?: ColumnRef | BoardColumnRef;
+  onChange: (columnId: string) => void;
   isDark: boolean;
 }
 
-function FieldMappingRow({ field, boards, mapping, onChange, isDark }: FieldMappingRowProps) {
-  const [selectedBoard, setSelectedBoard] = useState(mapping?.boardId || "");
-  const [selectedColumn, setSelectedColumn] = useState(mapping?.columnId || "");
-
-  const selectedBoardData = boards.find(b => b.id === selectedBoard);
-
-  useEffect(() => {
-    if (selectedBoard && selectedColumn) {
-      onChange(selectedBoard, selectedColumn);
-    }
-  }, [selectedBoard, selectedColumn, onChange]);
+function ColumnMappingRow({ field, columns, mapping, onChange, isDark }: ColumnMappingRowProps) {
+  const columnId = (mapping as any)?.columnId || "";
 
   return (
     <div className={`p-4 rounded-lg border ${
       isDark ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-200"
     }`}>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-        {/* Field Info */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
         <div>
           <div className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
             {field.label}
@@ -563,37 +881,13 @@ function FieldMappingRow({ field, boards, mapping, onChange, isDark }: FieldMapp
           <div className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
             Type: {field.type}
           </div>
+          {field.description && (
+            <div className={`text-xs mt-1 ${isDark ? "text-gray-500" : "text-gray-500"}`}>
+              {field.description}
+            </div>
+          )}
         </div>
 
-        {/* Board Selector */}
-        <div>
-          <label className={`block text-sm font-medium mb-1 ${
-            isDark ? "text-gray-300" : "text-gray-700"
-          }`}>
-            Board
-          </label>
-          <select
-            value={selectedBoard}
-            onChange={(e) => {
-              setSelectedBoard(e.target.value);
-              setSelectedColumn(""); // Reset column when board changes
-            }}
-            className={`w-full px-3 py-2 rounded-lg border ${
-              isDark
-                ? "bg-gray-800 border-gray-600 text-white"
-                : "bg-white border-gray-300 text-gray-900"
-            } focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
-          >
-            <option value="">Select Board...</option>
-            {boards.map(board => (
-              <option key={board.id} value={board.id}>
-                {board.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Column Selector */}
         <div>
           <label className={`block text-sm font-medium mb-1 ${
             isDark ? "text-gray-300" : "text-gray-700"
@@ -601,17 +895,70 @@ function FieldMappingRow({ field, boards, mapping, onChange, isDark }: FieldMapp
             Column
           </label>
           <select
-            value={selectedColumn}
-            onChange={(e) => setSelectedColumn(e.target.value)}
-            disabled={!selectedBoard}
+            value={columnId}
+            onChange={(e) => onChange(e.target.value)}
             className={`w-full px-3 py-2 rounded-lg border ${
               isDark
                 ? "bg-gray-800 border-gray-600 text-white"
                 : "bg-white border-gray-300 text-gray-900"
-            } focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed`}
+            } focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
           >
             <option value="">Select Column...</option>
-            {selectedBoardData?.columns.map(column => (
+            {columns.map(column => (
+              <option key={column.id} value={column.id}>
+                {column.title} ({column.type})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper component for writeback mapping row
+interface WritebackMappingRowProps {
+  label: string;
+  columns: MondayColumnDTO[];
+  mapping: BoardColumnRef | null;
+  onChange: (columnId: string) => void;
+  isDark: boolean;
+}
+
+function WritebackMappingRow({ label, columns, mapping, onChange, isDark }: WritebackMappingRowProps) {
+  const columnId = mapping?.columnId || "";
+
+  return (
+    <div className={`p-4 rounded-lg border ${
+      isDark ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-200"
+    }`}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+        <div>
+          <div className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
+            {label}
+          </div>
+          <div className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+            Where routing results will be written
+          </div>
+        </div>
+
+        <div>
+          <label className={`block text-sm font-medium mb-1 ${
+            isDark ? "text-gray-300" : "text-gray-700"
+          }`}>
+            Column
+          </label>
+          <select
+            value={columnId}
+            onChange={(e) => onChange(e.target.value)}
+            className={`w-full px-3 py-2 rounded-lg border ${
+              isDark
+                ? "bg-gray-800 border-gray-600 text-white"
+                : "bg-white border-gray-300 text-gray-900"
+            } focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
+          >
+            <option value="">Select Column...</option>
+            {columns.map(column => (
               <option key={column.id} value={column.id}>
                 {column.title} ({column.type})
               </option>

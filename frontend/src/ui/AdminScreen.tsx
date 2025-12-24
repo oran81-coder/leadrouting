@@ -471,6 +471,62 @@ export function AdminScreen() {
         )}
       </div>
 
+      {/* Routing Settings Card */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Routing Settings
+        </h3>
+
+        <div className="space-y-4">
+          {/* Daily Lead Threshold */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Daily Lead Threshold per Agent
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              Maximum number of leads an agent can receive per day before being marked as "less available".
+              This affects automatic availability calculations.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={metricsCfg?.dailyLeadThreshold || 20}
+                onChange={(e) => {
+                  if (metricsCfg) {
+                    setMetricsCfg({
+                      ...metricsCfg,
+                      dailyLeadThreshold: parseInt(e.target.value) || 20
+                    });
+                  }
+                }}
+                className="w-32 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                leads/day
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Current: {metricsCfg?.dailyLeadThreshold || 20} leads per day
+            </p>
+          </div>
+        </div>
+
+        {/* Info Box */}
+        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
+            ℹ️ How Availability Works
+          </h4>
+          <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1 list-disc list-inside">
+            <li>System automatically calculates agent availability</li>
+            <li>Based on leads currently "in treatment" (configurable statuses)</li>
+            <li>Agents exceeding daily threshold become "less available"</li>
+            <li>Availability score affects lead routing decisions</li>
+          </ul>
+        </div>
+      </div>
+
       {/* Column Picker Modal */}
       {pickerOpen && (
         <div

@@ -12,7 +12,7 @@
 export type EntityType = "lead" | "agent" | "deal";
 
 // Supported value types that we validate during mapping + normalization
-export type InternalValueType = "text" | "number" | "status" | "date" | "boolean";
+export type InternalValueType = "text" | "number" | "status" | "date" | "boolean" | "computed";
 
 export interface FieldDefinition {
   /** Stable internal identifier (snake_case). Used as the key in normalized entities. */
@@ -87,20 +87,110 @@ export interface NormalizedSnapshot {
  */
 export const DEFAULT_CORE_FIELDS: FieldDefinition[] = [
   // Lead core
-  { id: "lead_source", label: "Lead Source", entity: "lead", type: "status", required: true, isCore: true, active: true, group: "Lead" },
-  { id: "lead_industry", label: "Industry", entity: "lead", type: "status", required: false, isCore: true, active: true, group: "Lead" },
-  { id: "lead_deal_size", label: "Deal Size / Amount", entity: "lead", type: "number", required: false, isCore: true, active: true, group: "Lead" },
-  { id: "lead_created_at", label: "Created At", entity: "lead", type: "date", required: true, isCore: true, active: true, group: "Lead" },
+  { 
+    id: "lead_source", 
+    label: "Lead Source", 
+    entity: "lead", 
+    type: "status", 
+    required: true, 
+    isCore: true, 
+    active: true, 
+    group: "Lead",
+    description: "Source/campaign of the lead"
+  },
+  { 
+    id: "lead_industry", 
+    label: "Industry", 
+    entity: "lead", 
+    type: "status", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Lead",
+    description: "Industry/vertical of the lead"
+  },
+  { 
+    id: "lead_deal_size", 
+    label: "Deal Size / Amount", 
+    entity: "lead", 
+    type: "number", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Lead",
+    description: "Potential deal value"
+  },
+  { 
+    id: "lead_created_at", 
+    label: "Created At (Auto)", 
+    entity: "lead", 
+    type: "date", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Lead",
+    description: "Automatically captured from Monday item creation time"
+  },
 
   // Agent core
-  { id: "agent_domain", label: "Domain", entity: "agent", type: "status", required: false, isCore: true, active: true, group: "Agent" },
-  { id: "agent_availability", label: "Availability", entity: "agent", type: "status", required: true, isCore: true, active: true, group: "Agent" },
-  { id: "agent_workload", label: "Workload", entity: "agent", type: "number", required: false, isCore: true, active: true, group: "Agent" },
+  { 
+    id: "agent_domain", 
+    label: "Agent Domain Expertise", 
+    entity: "agent", 
+    type: "computed", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Agent",
+    description: "Auto-learned from historical performance by Industry. System tracks conversion rates and identifies agent expertise domains."
+  },
+  { 
+    id: "agent_availability", 
+    label: "Availability (Auto-Calculated)", 
+    entity: "agent", 
+    type: "computed", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Agent",
+    description: "Calculated automatically from leads in-treatment count and daily quota"
+  },
+  // NOTE: agent_workload removed - will be managed manually in Outcomes UI
 
   // Deal core
-  { id: "deal_status", label: "Deal Status", entity: "deal", type: "status", required: true, isCore: true, active: true, group: "Deal" },
-  { id: "deal_close_date", label: "Close Date", entity: "deal", type: "date", required: false, isCore: true, active: true, group: "Deal" },
-  { id: "deal_amount", label: "Deal Amount", entity: "deal", type: "number", required: false, isCore: true, active: true, group: "Deal" },
+  { 
+    id: "deal_status", 
+    label: "Deal Status", 
+    entity: "deal", 
+    type: "status", 
+    required: true, 
+    isCore: true, 
+    active: true, 
+    group: "Deal",
+    description: "Current status of the deal"
+  },
+  { 
+    id: "deal_close_date", 
+    label: "Close Date (Optional Column)", 
+    entity: "deal", 
+    type: "date", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Deal",
+    description: "Optional: If column exists, use it. Otherwise, use status change timestamp"
+  },
+  { 
+    id: "deal_amount", 
+    label: "Deal Amount", 
+    entity: "deal", 
+    type: "number", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Deal",
+    description: "Final deal value"
+  },
 ];
 
 export function buildDefaultSchema(): InternalSchema {
