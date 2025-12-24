@@ -9,6 +9,12 @@ import { AuthProvider } from "./ui/AuthContext";
 import { AppWithAuth } from "./ui/AppWithAuth";
 import "./index.css";
 
+// Set default API key if not already set (for development)
+if (!localStorage.getItem("apiKey")) {
+  localStorage.setItem("apiKey", "dev_key_123");
+  console.log("✅ API Key initialized with dev_key_123");
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary
