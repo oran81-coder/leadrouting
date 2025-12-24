@@ -11,6 +11,7 @@ import { metricsRoutes } from "./metrics.routes";
 import { mondayPickerRoutes } from "./mondayPicker.routes";
 import { authRoutes } from "./auth.routes";
 import { kpiWeightsRoutes } from "./kpiWeights.routes";
+import { routingCalculationRoutes } from "./routingCalculation.routes";
 
 import { requireApiKey } from "../middleware/authApiKey";
 import { requireMondayConnected } from "../middleware/requireMondayConnected";
@@ -31,6 +32,7 @@ export function registerRoutes(app: Express) {
   console.log("[registerRoutes] mounted /admin");
 
   app.use("/routing", requireApiKey, routingRoutes());
+  app.use("/routing/calculate", requireApiKey, routingCalculationRoutes()); // Phase 2: Routing calculation with KPIs
   app.use("/manager", requireApiKey, managerRoutes());
   app.use("/metrics", requireApiKey, metricsRoutes());
   app.use("/outcomes", requireApiKey, outcomesRoutes());
