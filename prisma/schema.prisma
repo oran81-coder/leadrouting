@@ -166,22 +166,38 @@ model MetricsConfig {
   avgDealWindowDays    Int @default(90)
   responseWindowDays   Int @default(30)
 
-  // hot streak
-  hotStreakWindowHours Int @default(72)
-  hotStreakMinDeals    Int @default(1)
+  // Phase 2: KPI Weights (must sum to 100%)
+  weightDomainExpertise      Int @default(30)  // NEW
+  weightAvailability         Int @default(5)   // NEW
+  weightConversionHistorical Int @default(20)  // Renamed from weightConversion
+  weightRecentPerformance    Int @default(20)  // NEW (30-day conversion)
+  weightAvgDealSize          Int @default(5)   // Renamed from weightAvgDeal
+  weightResponseTime         Int @default(5)   // Renamed from weightResponseSpeed
+  weightAvgTimeToClose       Int @default(5)   // NEW
+  weightHotAgent             Int @default(10)  // Renamed from weightHotStreak
 
-  // burnout
-  burnoutWinDecayHours      Int @default(336) // 14 days
-  burnoutActivityDecayHours Int @default(168) // 7 days
+  // Phase 2: Hot Agent Configuration (user-configurable)
+  hotAgentMinDeals     Int @default(3)   // NEW: min deals to be "hot"
+  hotAgentWindowDays   Int @default(7)   // NEW: time window for hot calculation (converted from hours)
 
-  // weights (must sum to 100)
-  weightIndustryPerf    Int @default(25)
-  weightConversion      Int @default(20)
-  weightAvgDeal         Int @default(15)
-  weightHotStreak       Int @default(10)
-  weightResponseSpeed   Int @default(15)
-  weightBurnout         Int @default(10)
-  weightAvailabilityCap Int @default(5)
+  // Phase 2: Recent Performance window (user-configurable)
+  recentPerfWindowDays Int @default(30)  // NEW
+
+  // Phase 2: Daily Lead Threshold (from previous update)
+  dailyLeadThreshold Int @default(20)
+
+  // DEPRECATED - kept for migration compatibility, will be removed in future
+  hotStreakWindowHours      Int @default(72)
+  hotStreakMinDeals         Int @default(1)
+  burnoutWinDecayHours      Int @default(336)
+  burnoutActivityDecayHours Int @default(168)
+  weightIndustryPerf        Int @default(25)
+  weightConversion          Int @default(20)
+  weightAvgDeal             Int @default(15)
+  weightHotStreak           Int @default(10)
+  weightResponseSpeed       Int @default(15)
+  weightBurnout             Int @default(10)
+  weightAvailabilityCap     Int @default(5)
 
   // mappings (column ids + values)
   leadBoardIds   String // comma separated

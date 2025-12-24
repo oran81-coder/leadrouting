@@ -348,3 +348,42 @@ export async function previewMapping(): Promise<MappingPreviewResult> {
     body: "{}",
   });
 }
+
+// ============================================
+// Phase 2: KPI Weights API
+// ============================================
+
+export interface KPIWeights {
+  domainExpertise: number;
+  availability: number;
+  conversionHistorical: number;
+  recentPerformance: number;
+  avgDealSize: number;
+  responseTime: number;
+  avgTimeToClose: number;
+  hotAgent: number;
+}
+
+export interface KPISettings {
+  hotAgentMinDeals: number;
+  hotAgentWindowDays: number;
+  recentPerfWindowDays: number;
+  dailyLeadThreshold: number;
+}
+
+export interface KPIWeightsResponse {
+  ok: boolean;
+  weights: KPIWeights;
+  settings: KPISettings;
+}
+
+export async function getKPIWeights(): Promise<KPIWeightsResponse> {
+  return await http<KPIWeightsResponse>(`/kpi-weights`);
+}
+
+export async function saveKPIWeights(weights: KPIWeights, settings: KPISettings): Promise<{ ok: boolean }> {
+  return await http<{ ok: boolean }>(`/kpi-weights`, {
+    method: "POST",
+    body: JSON.stringify({ weights, settings }),
+  });
+}

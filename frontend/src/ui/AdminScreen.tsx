@@ -9,11 +9,16 @@ import {
   listMondayBoards,
   listMondayBoardColumns,
   listMondayStatusLabels,
+  getKPIWeights,
+  saveKPIWeights,
   type MetricsConfigDTO,
+  type KPIWeights,
+  type KPISettings,
 } from "./api";
 import { useToast } from "./hooks/useToast";
 import { useConfirm } from "./hooks/useConfirm";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { InfoTooltip } from "./components/InfoTooltip";
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -46,9 +51,16 @@ export function AdminScreen() {
   const [pickerStatusLabels, setPickerStatusLabels] = useState<Array<{ key: string; label: string }>>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
 
+  // Phase 2: KPI Weights state
+  const [kpiWeights, setKpiWeights] = useState<KPIWeights | null>(null);
+  const [kpiSettings, setKpiSettings] = useState<KPISettings | null>(null);
+  const [kpiSaving, setKpiSaving] = useState(false);
+  const [kpiMsg, setKpiMsg] = useState<string | null>(null);
+
   useEffect(() => {
     loadMondayStatus();
     loadMetricsConfig();
+    loadKPIWeights();
   }, []);
 
   async function loadMondayStatus() {
@@ -66,6 +78,42 @@ export function AdminScreen() {
       setMetricsCfg(cfg);
     } catch (e: any) {
       console.error("Error loading metrics config:", e);
+    }
+  }
+
+  async function loadKPIWeights() {
+    try {
+      const data = await getKPIWeights();
+      setKpiWeights(data.weights);
+      setKpiSettings(data.settings);
+    } catch (e: any) {
+      console.error("Error loading KPI weights:", e);
+      showToast("Error loading KPI weights: " + (e?.message || String(e)), "error");
+    }
+  }
+
+  async function handleSaveKPIWeights() {
+    if (!kpiWeights || !kpiSettings) return;
+
+    // Validate weights sum to 100
+    const total = Object.values(kpiWeights).reduce((sum, w) => sum + w, 0);
+    if (Math.abs(total - 100) > 0.01) {
+      showToast(`Weights must sum to 100%. Current total: ${total.toFixed(1)}%`, "error");
+      return;
+    }
+
+    setKpiSaving(true);
+    setKpiMsg(null);
+    try {
+      await saveKPIWeights(kpiWeights, kpiSettings);
+      setKpiMsg("✅ KPI Weights saved successfully!");
+      showToast("KPI Weights saved successfully!", "success");
+      setTimeout(() => setKpiMsg(null), 3000);
+    } catch (e: any) {
+      setKpiMsg("❌ " + (e?.message || String(e)));
+      showToast("Failed to save: " + (e?.message || String(e)), "error");
+    } finally {
+      setKpiSaving(false);
     }
   }
 
@@ -526,6 +574,234 @@ export function AdminScreen() {
           </ul>
         </div>
       </div>
+
+      {/* Phase 2: KPI Weights Configuration Card */}
+      {kpiWeights && kpiSettings && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            KPI Weights Configuration
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Configure the importance of each KPI in routing decisions. Total must equal 100%.
+          </p>
+
+          {/* Total Display */}
+          <div className="mb-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+            <div className="text-2xl font-bold text-center text-gray-900 dark:text-white">
+              Total: {Object.values(kpiWeights).reduce((sum, w) => sum + w, 0).toFixed(1)}%
+              {Math.abs(Object.values(kpiWeights).reduce((sum, w) => sum + w, 0) - 100) < 0.01 ? (
+                <span className="text-green-600 dark:text-green-400 ml-2">✓</span>
+              ) : (
+                <span className="text-red-600 dark:text-red-400 ml-2 text-base">Must be 100%</span>
+              )}
+            </div>
+          </div>
+
+          {/* Weight Inputs */}
+          <div className="space-y-3 mb-6">
+            {/* Domain Expertise */}
+            <div className="flex items-center gap-3">
+              <div className="w-64 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Domain Expertise
+                </label>
+                <InfoTooltip text="Agent's proven success rate in the lead's specific industry based on historical conversion rates and deal volume" />
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={kpiWeights.domainExpertise}
+                onChange={(e) => setKpiWeights({ ...kpiWeights, domainExpertise: Number(e.target.value) || 0 })}
+                className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+            </div>
+
+            {/* Availability */}
+            <div className="flex items-center gap-3">
+              <div className="w-64 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Availability
+                </label>
+                <InfoTooltip text="Agent's current capacity based on active leads count and daily quota threshold" />
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={kpiWeights.availability}
+                onChange={(e) => setKpiWeights({ ...kpiWeights, availability: Number(e.target.value) || 0 })}
+                className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+            </div>
+
+            {/* Conversion Rate (Historical) */}
+            <div className="flex items-center gap-3">
+              <div className="w-64 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Conversion Rate (All-Time)
+                </label>
+                <InfoTooltip text="Agent's overall conversion rate across all time periods and industries - shows long-term track record" />
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={kpiWeights.conversionHistorical}
+                onChange={(e) => setKpiWeights({ ...kpiWeights, conversionHistorical: Number(e.target.value) || 0 })}
+                className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+            </div>
+
+            {/* Recent Performance */}
+            <div className="flex items-center gap-3">
+              <div className="w-64 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Recent Performance
+                </label>
+                <InfoTooltip text="Agent's conversion rate in the recent configurable time window - indicates current form and momentum" />
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={kpiWeights.recentPerformance}
+                onChange={(e) => setKpiWeights({ ...kpiWeights, recentPerformance: Number(e.target.value) || 0 })}
+                className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+              <div className="flex items-center gap-2 ml-4">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Last</span>
+                <input
+                  type="number"
+                  min="7"
+                  max="90"
+                  value={kpiSettings.recentPerfWindowDays}
+                  onChange={(e) => setKpiSettings({ ...kpiSettings, recentPerfWindowDays: Number(e.target.value) || 30 })}
+                  className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm"
+                />
+                <span className="text-xs text-gray-500 dark:text-gray-400">days</span>
+              </div>
+            </div>
+
+            {/* Average Deal Size */}
+            <div className="flex items-center gap-3">
+              <div className="w-64 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Average Deal Size
+                </label>
+                <InfoTooltip text="Average value of deals closed by the agent - measures ability to close high-value opportunities" />
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={kpiWeights.avgDealSize}
+                onChange={(e) => setKpiWeights({ ...kpiWeights, avgDealSize: Number(e.target.value) || 0 })}
+                className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+            </div>
+
+            {/* Response Time */}
+            <div className="flex items-center gap-3">
+              <div className="w-64 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Response Time
+                </label>
+                <InfoTooltip text="How quickly the agent responds to new leads (from assignment to first status update) - speed matters" />
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={kpiWeights.responseTime}
+                onChange={(e) => setKpiWeights({ ...kpiWeights, responseTime: Number(e.target.value) || 0 })}
+                className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+            </div>
+
+            {/* Average Time to Close */}
+            <div className="flex items-center gap-3">
+              <div className="w-64 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Avg Time to Close
+                </label>
+                <InfoTooltip text="Average days from lead assignment to deal closure - measures sales cycle efficiency and closing speed" />
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={kpiWeights.avgTimeToClose}
+                onChange={(e) => setKpiWeights({ ...kpiWeights, avgTimeToClose: Number(e.target.value) || 0 })}
+                className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+            </div>
+
+            {/* Hot Agent */}
+            <div className="flex items-center gap-3">
+              <div className="w-64 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Hot Agent
+                </label>
+                <InfoTooltip text="Agent is 'on fire' - closed multiple deals in a short time window, indicating peak performance and winning momentum" />
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={kpiWeights.hotAgent}
+                onChange={(e) => setKpiWeights({ ...kpiWeights, hotAgent: Number(e.target.value) || 0 })}
+                className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">%</span>
+              <div className="flex items-center gap-2 ml-4">
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={kpiSettings.hotAgentMinDeals}
+                  onChange={(e) => setKpiSettings({ ...kpiSettings, hotAgentMinDeals: Number(e.target.value) || 3 })}
+                  className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm"
+                />
+                <span className="text-xs text-gray-500 dark:text-gray-400">deals in</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={kpiSettings.hotAgentWindowDays}
+                  onChange={(e) => setKpiSettings({ ...kpiSettings, hotAgentWindowDays: Number(e.target.value) || 7 })}
+                  className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm"
+                />
+                <span className="text-xs text-gray-500 dark:text-gray-400">days</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Save Button */}
+          <div className="flex items-center gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={handleSaveKPIWeights}
+              disabled={kpiSaving || Math.abs(Object.values(kpiWeights).reduce((sum, w) => sum + w, 0) - 100) >= 0.01}
+              className="px-6 py-2 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {kpiSaving ? "Saving..." : "Save Weights"}
+            </button>
+
+            {kpiMsg && (
+              <div className="text-sm text-gray-700 dark:text-gray-300">
+                {kpiMsg}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Column Picker Modal */}
       {pickerOpen && (
