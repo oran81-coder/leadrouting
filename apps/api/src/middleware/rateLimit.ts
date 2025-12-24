@@ -115,8 +115,9 @@ export function createRateLimiter(
     standardHeaders: true, // Return rate limit info in RateLimit-* headers
     legacyHeaders: false, // Disable X-RateLimit-* headers
     
-    // Custom key generator
-    keyGenerator: generateKey,
+    // FIXED: Remove custom keyGenerator to use default (supports IPv6)
+    // The default keyGenerator properly handles both IPv4 and IPv6
+    // keyGenerator: generateKey, // REMOVED - was causing IPv6 errors
     
     // Custom handler
     handler: rateLimitHandler,

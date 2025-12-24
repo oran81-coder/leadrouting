@@ -5,7 +5,7 @@
  * - Daily lead quota
  */
 
-import { PrismaLeadFactRepo } from "../../lead-facts/src/infrastructure/leadFact.repo";
+import { PrismaLeadFactRepo } from "../../../../../apps/api/src/infrastructure/leadFact.repo";
 import type { StatusConfig } from "../../field-mapping/src/contracts/mapping.types";
 
 export interface AvailabilityScore {

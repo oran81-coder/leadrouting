@@ -31,8 +31,8 @@ export function registerRoutes(app: Express) {
   app.use("/admin", requireApiKey, adminRoutes());
   console.log("[registerRoutes] mounted /admin");
 
+  app.use("/routing-calc", requireApiKey, routingCalculationRoutes()); // Phase 2: renamed to avoid conflict
   app.use("/routing", requireApiKey, routingRoutes());
-  app.use("/routing/calculate", requireApiKey, routingCalculationRoutes()); // Phase 2: Routing calculation with KPIs
   app.use("/manager", requireApiKey, managerRoutes());
   app.use("/metrics", requireApiKey, metricsRoutes());
   app.use("/outcomes", requireApiKey, outcomesRoutes());
