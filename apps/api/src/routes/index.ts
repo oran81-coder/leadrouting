@@ -9,7 +9,7 @@ import { outcomesRoutes } from "./outcomes.routes";
 import { healthRoutes } from "./health.routes";
 import { metricsRoutes } from "./metrics.routes";
 import { mondayPickerRoutes } from "./mondayPicker.routes";
-import { authRoutes } from "./auth.routes";
+import authRoutes from "./auth.routes";
 import { kpiWeightsRoutes } from "./kpiWeights.routes";
 import { routingCalculationRoutes } from "./routingCalculation.routes";
 import { agentProfileRoutes } from "./agentProfile.routes";
@@ -27,7 +27,7 @@ export function registerRoutes(app: Express) {
 
   // Public routes (no API key required)
   app.use("/health", healthRoutes());
-  app.use("/auth", authRoutes()); // Authentication endpoints
+  app.use("/auth", authRoutes); // Authentication endpoints
 
   app.use("/admin", requireApiKey, adminRoutes());
   console.log("[registerRoutes] mounted /admin");

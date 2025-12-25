@@ -1,217 +1,232 @@
-/**
- * Authentication Routes
- * 
- * Phase 5.1: Login, logout, registration, token refresh, and user info endpoints
- */
-
-import { Router, type Request, type Response } from "express";
-import { AuthService } from "../../../../packages/modules/auth/src/application/auth.service";
-import { rateLimiters } from "../middleware/rateLimit";
-import { authenticateJWT, requireAdmin } from "../middleware/auth";
-import { UnauthorizedError } from "../../../../packages/core/src/shared/errors";
+import { Router, Request, Response } from "express";
+import { createAuthService } from "../../../../packages/core/src/auth/auth.service";
+import { authenticate, AuthenticatedRequest } from "../middleware/auth.middleware";
+import { getPrisma } from "../../../../packages/core/src/db/prisma";
+import { env } from "../config/env";
 import { z } from "zod";
-import { validate } from "../middleware/validate";
 
-const authService = new AuthService();
+const router = Router();
 
-// DTO Schemas
-const LoginSchema = z.object({
-  email: z.string().email("Invalid email format"),
-  password: z.string().min(1, "Password is required"),
+// Create auth service instance
+const authService = createAuthService({
+  prisma: getPrisma(),
+  bcryptRounds: env.BCRYPT_ROUNDS,
 });
 
-const RegisterSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters"),
+/**
+ * Validation schemas
+ */
+const loginSchema = z.object({
   email: z.string().email("Invalid email format"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  role: z.enum(["admin", "manager", "agent"]),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
+  orgId: z.string().min(1, "Organization ID is required"),
 });
 
-const RefreshTokenSchema = z.object({
+const registerSchema = z.object({
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  orgId: z.string().min(1, "Organization ID is required"),
+  role: z.enum(["admin", "manager", "agent"]).optional(),
+});
+
+const refreshSchema = z.object({
   refreshToken: z.string().min(1, "Refresh token is required"),
 });
 
-export function authRoutes() {
-  const router = Router();
-
-  /**
-   * POST /auth/login
-   * 
-   * Login with email and password
-   * Returns user info and JWT tokens
-   */
-  router.post(
-    "/login",
-    rateLimiters.sensitive, // Strict rate limit for login attempts
-    validate(LoginSchema),
-    async (req: Request, res: Response, next) => {
-      try {
-        const { email, password } = req.body;
-        const ipAddress = req.ip;
-        const userAgent = req.headers["user-agent"];
-
-        const result = await authService.login(
-          { email, password },
-          ipAddress,
-          userAgent
-        );
-
-        res.json({
-          success: true,
-          data: result,
-        });
-      } catch (error) {
-        next(error);
-      }
-    }
-  );
-
-  /**
-   * POST /auth/register
-   * 
-   * Register new user (admin only)
-   * Creates new user account
-   */
-  router.post(
-    "/register",
-    authenticateJWT,
-    requireAdmin, // Only admins can create users
-    validate(RegisterSchema),
-    async (req: Request, res: Response, next) => {
-      try {
-        const { username, email, password, role, firstName, lastName } = req.body;
-
-        const user = await authService.register({
-          orgId: "org_1", // Phase 1: single org
-          username,
-          email,
-          password,
-          role,
-          firstName,
-          lastName,
-        });
-
-        res.status(201).json({
-          success: true,
-          data: user,
-        });
-      } catch (error) {
-        next(error);
-      }
-    }
-  );
-
-  /**
-   * POST /auth/logout
-   * 
-   * Logout current user
-   * Revokes the access token
-   */
-  router.post("/logout", authenticateJWT, async (req: Request, res: Response, next) => {
-    try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader) {
-        throw new UnauthorizedError("No token provided");
-      }
-
-      const token = authHeader.substring(7); // Remove "Bearer " prefix
-      await authService.logout(token);
-
-      res.json({
-        success: true,
-        message: "Logged out successfully",
+/**
+ * POST /auth/register
+ * Register a new user
+ */
+router.post("/register", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = registerSchema.parse(req.body);
+    const tokens = await authService.register(data);
+    
+    res.status(201).json({
+      success: true,
+      data: tokens,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        error: "Validation error",
+        details: error.errors,
       });
-    } catch (error) {
-      next(error);
+      return;
     }
-  });
 
-  /**
-   * POST /auth/refresh
-   * 
-   * Refresh access token using refresh token
-   * Returns new access and refresh tokens
-   */
-  router.post(
-    "/refresh",
-    rateLimiters.standard,
-    validate(RefreshTokenSchema),
-    async (req: Request, res: Response, next) => {
-      try {
-        const { refreshToken } = req.body;
-        const ipAddress = req.ip;
-        const userAgent = req.headers["user-agent"];
-
-        const tokens = await authService.refreshToken(
-          { refreshToken },
-          ipAddress,
-          userAgent
-        );
-
-        res.json({
-          success: true,
-          data: tokens,
-        });
-      } catch (error) {
-        next(error);
-      }
-    }
-  );
-
-  /**
-   * GET /auth/me
-   * 
-   * Get current user info
-   * Returns authenticated user details
-   */
-  router.get("/me", authenticateJWT, async (req: Request, res: Response, next) => {
-    try {
-      if (!req.user) {
-        throw new UnauthorizedError("Not authenticated");
-      }
-
-      res.json({
-        success: true,
-        data: req.user,
+    if (error instanceof Error) {
+      res.status(400).json({
+        success: false,
+        error: error.message,
       });
-    } catch (error) {
-      next(error);
+      return;
     }
-  });
 
-  /**
-   * GET /auth/status
-   * 
-   * Check authentication status (no auth required)
-   * Returns whether auth is enabled and if user is logged in
-   */
-  router.get("/status", async (req: Request, res: Response) => {
-    const authHeader = req.headers.authorization;
-    let isAuthenticated = false;
-    let user = null;
+    res.status(500).json({
+      success: false,
+      error: "Failed to register user",
+    });
+  }
+});
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      try {
-        const token = authHeader.substring(7);
-        user = await authService.getUserFromToken(token);
-        isAuthenticated = true;
-      } catch (error) {
-        // Token invalid, isAuthenticated remains false
-      }
+/**
+ * POST /auth/login
+ * Login with email and password
+ */
+router.post("/login", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const credentials = loginSchema.parse(req.body);
+    const tokens = await authService.login(credentials);
+    
+    res.json({
+      success: true,
+      data: tokens,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        error: "Validation error",
+        details: error.errors,
+      });
+      return;
+    }
+
+    if (error instanceof Error) {
+      res.status(401).json({
+        success: false,
+        error: error.message,
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Login failed",
+    });
+  }
+});
+
+/**
+ * POST /auth/refresh
+ * Refresh access token using refresh token
+ */
+router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { refreshToken } = refreshSchema.parse(req.body);
+    const tokens = await authService.refreshAccessToken(refreshToken);
+    
+    res.json({
+      success: true,
+      data: tokens,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        error: "Validation error",
+        details: error.errors,
+      });
+      return;
+    }
+
+    res.status(401).json({
+      success: false,
+      error: "Invalid or expired refresh token",
+    });
+  }
+});
+
+/**
+ * POST /auth/logout
+ * Logout current session
+ */
+router.post("/logout", authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.sessionId) {
+      res.status(401).json({
+        success: false,
+        error: "No active session",
+      });
+      return;
+    }
+
+    await authService.logout(req.user.sessionId);
+    
+    res.json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Logout failed",
+    });
+  }
+});
+
+/**
+ * GET /auth/me
+ * Get current authenticated user info
+ */
+router.get("/me", authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: "Not authenticated",
+      });
+      return;
     }
 
     res.json({
       success: true,
       data: {
-        authEnabled: process.env.AUTH_ENABLED === "true",
-        isAuthenticated,
-        user: isAuthenticated ? user : null,
+        userId: req.user.userId,
+        email: req.user.email,
+        role: req.user.role,
+        orgId: req.user.orgId,
       },
     });
-  });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Failed to get user info",
+    });
+  }
+});
 
-  return router;
-}
+/**
+ * POST /auth/revoke-all
+ * Revoke all sessions for current user (useful for security)
+ */
+router.post("/revoke-all", authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.userId) {
+      res.status(401).json({
+        success: false,
+        error: "Not authenticated",
+      });
+      return;
+    }
 
+    await authService.revokeAllSessions(req.user.userId);
+    
+    res.json({
+      success: true,
+      message: "All sessions revoked successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Failed to revoke sessions",
+    });
+  }
+});
+
+export default router;

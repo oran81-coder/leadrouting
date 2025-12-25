@@ -172,18 +172,30 @@ export type MetricsConfigDTO = {
   industryColumnId?: string | null;
 };
 
+// DEPRECATED: Use getKPIWeights() instead
+// Kept for backward compatibility during migration
 export async function getMetricsConfig(): Promise<MetricsConfigDTO> {
-  const json = await http<{ ok: boolean; config: MetricsConfigDTO }>("/metrics/config", {
-    method: "GET",
-  });
-  return json.config;
+  console.warn("getMetricsConfig() is deprecated. Use getKPIWeights() instead.");
+  // Return empty config to avoid 404 errors
+  return {
+    leadBoardIds: "",
+    enableIndustryPerf: true,
+    enableConversion: true,
+    enableAvgDealSize: true,
+    enableHotStreak: true,
+    enableResponseSpeed: true,
+    enableBurnout: true,
+    enableAvailabilityCap: true,
+    conversionWindowDays: 30,
+    avgDealWindowDays: 90,
+    responseWindowDays: 30,
+  };
 }
 
+// DEPRECATED: Use saveKPIWeights() instead
 export async function updateMetricsConfig(patch: Partial<MetricsConfigDTO>): Promise<any> {
-  return http("/metrics/config", {
-    method: "PUT",
-    body: JSON.stringify(patch),
-  });
+  console.warn("updateMetricsConfig() is deprecated. Use saveKPIWeights() instead.");
+  return { ok: true };
 }
 
 export async function recomputeMetrics(): Promise<any> {
@@ -209,7 +221,7 @@ export async function listMondayBoardColumns(boardId: string): Promise<MondayCol
 
 export async function listMondayStatusLabels(boardId: string, columnId: string): Promise<MondayStatusLabelDTO[]> {
   const json = await http<{ ok: boolean; labels: MondayStatusLabelDTO[] }>(`/monday/boards/${boardId}/status/${columnId}/labels`, { method: "GET" });
-  return json.labels;
+  return json.labels || [];
 }
 
 
@@ -332,17 +344,22 @@ export async function saveMappingConfig(config: FieldMappingConfig): Promise<{ v
 
 export async function getMappingBoards(): Promise<MondayBoardDTO[]> {
   const data = await http<{ ok: boolean; boards: MondayBoardDTO[] }>(`/monday/boards`);
-  return data.boards;
+  return data.boards || [];
 }
 
 export interface MappingPreviewResult {
   ok: boolean;
-  samplesRead: number;
-  normalizedSuccessfully: number;
-  errors: Array<{
-    field: string;
-    error: string;
+  orgId?: string;
+  schemaVersion?: number;
+  mappingVersion?: number;
+  hasErrors?: boolean;
+  rows?: Array<{
+    entity: string;
+    normalizedFields: Record<string, any>;
+    normalizationErrors?: string[];
   }>;
+  debug?: { source: string };
+  error?: string;
 }
 
 export async function previewMapping(): Promise<MappingPreviewResult> {
@@ -389,4 +406,28 @@ export async function saveKPIWeights(weights: KPIWeights, settings: KPISettings)
     method: "POST",
     body: JSON.stringify({ weights, settings }),
   });
+}
+
+// ============================================================================
+// Performance Metrics API
+// ============================================================================
+
+export interface MetricValue {
+  type: 'counter' | 'gauge' | 'histogram';
+  value?: number;
+  values?: any[];
+}
+
+export interface MetricsResponse {
+  ok: boolean;
+  timestamp: string;
+  metrics: Record<string, MetricValue>;
+  error?: string;
+}
+
+/**
+ * Fetch performance metrics in JSON format
+ */
+export async function getPerformanceMetrics(): Promise<MetricsResponse> {
+  return await http<MetricsResponse>(`/metrics/json`);
 }

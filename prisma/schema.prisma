@@ -47,6 +47,9 @@ model AuditLog {
   createdAt   DateTime @default(now())
 
   @@index([orgId, createdAt])
+  @@index([orgId, actorUserId, createdAt]) // Track user activities
+  @@index([orgId, entityType, entityId]) // Fast entity lookups
+  @@index([orgId, action, createdAt]) // Filter by action type
 }
 
 model RuleSetVersion {
@@ -110,6 +113,8 @@ model RoutingProposal {
   @@unique([orgId, idempotencyKey])
   @@index([orgId, status, createdAt])
   @@index([orgId, boardId, itemId])
+  @@index([orgId, decidedBy, decidedAt]) // Track manager decisions
+  @@index([status, createdAt]) // Global status filtering (for admin dashboards)
 }
 
 model RoutingApply {
@@ -346,6 +351,9 @@ model AgentProfile {
   @@index([orgId, agentUserId])
   @@index([orgId, availability])
   @@index([orgId, computedAt])
+  @@index([orgId, conversionRate]) // Sort by performance
+  @@index([orgId, hotStreakActive, availability]) // Find hot available agents
+  @@index([orgId, burnoutScore]) // Monitor burnout levels
 }
 
 // ============================================
@@ -374,6 +382,9 @@ model User {
   @@unique([orgId, email])
   @@index([orgId, role])
   @@index([orgId, isActive])
+  @@index([orgId, role, isActive]) // Active users by role
+  @@index([email]) // Global email lookup for login
+  @@index([lastLoginAt]) // Track user activity
 }
 
 model Session {
@@ -396,4 +407,6 @@ model Session {
   @@index([token])
   @@index([refreshToken])
   @@index([expiresAt])
+  @@index([userId, isRevoked, expiresAt]) // Active sessions by user
+  @@index([isRevoked, expiresAt]) // Cleanup expired/revoked sessions
 }

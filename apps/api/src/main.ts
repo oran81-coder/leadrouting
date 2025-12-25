@@ -72,5 +72,5 @@ process.on("unhandledRejection", (reason) => {
   process.exit(1);
 });
 
-// Start the server
+// Start the server with Performance & Monitoring enabled
 startServer();

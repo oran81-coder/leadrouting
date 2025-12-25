@@ -1,5 +1,8 @@
-export const logger = {
-  info: (msg: string, meta?: unknown) => console.log(msg, meta ?? ""),
-  warn: (msg: string, meta?: unknown) => console.warn(msg, meta ?? ""),
-  error: (msg: string, meta?: unknown) => console.error(msg, meta ?? ""),
-};
+/**
+ * Logger Export
+ * 
+ * Re-exports the centralized Winston logger from packages/core
+ * This ensures all parts of the API use the same logger instance
+ * with correlation ID tracking and structured logging.
+ */
+export { log as logger, logger as winstonLogger, setCorrelationId, getCorrelationId, generateCorrelationId } from "../../../../packages/core/src/shared/logger";

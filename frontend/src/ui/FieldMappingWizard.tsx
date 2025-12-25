@@ -71,6 +71,11 @@ export function FieldMappingWizard() {
   
   const [previewResult, setPreviewResult] = useState<MappingPreviewResult | null>(null);
 
+  // Scroll to top when step changes for better UX
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step]);
+
   // Load existing configuration and boards
   useEffect(() => {
     async function load() {
@@ -132,7 +137,7 @@ export function FieldMappingWizard() {
         setLoadingStatusLabels(true);
         const columnId = (mappings.deal_status as any).columnId;
         const labels = await listMondayStatusLabels(primaryBoardId, columnId);
-        setStatusLabels(labels.map(l => l.label));
+        setStatusLabels((labels || []).map(l => l.label));
       } catch (error: any) {
         console.error("Failed to load status labels:", error);
         setStatusLabels([]);
@@ -152,7 +157,7 @@ export function FieldMappingWizard() {
         setLoadingDealWonLabels(true);
         const columnId = (mappings.deal_won_status_column as any).columnId;
         const labels = await listMondayStatusLabels(primaryBoardId, columnId);
-        setDealWonStatusLabels(labels.map(l => l.label));
+        setDealWonStatusLabels((labels || []).map(l => l.label));
       } catch (error: any) {
         console.error("Failed to load Deal Won labels:", error);
         setDealWonStatusLabels([]);
@@ -212,8 +217,8 @@ export function FieldMappingWizard() {
       return errors;
     }
     
-    const enabledFields = fields.filter(f => f.isEnabled);
-    const requiredFields = enabledFields.filter(f => f.required && f.type !== "computed");
+    const enabledFields = (fields || []).filter(f => f?.isEnabled);
+    const requiredFields = enabledFields.filter(f => f?.required && f?.type !== "computed");
 
     for (const field of requiredFields) {
       if (!mappings[field.id]?.columnId) {
@@ -237,15 +242,29 @@ export function FieldMappingWizard() {
   const handlePreview = async () => {
     try {
       setPreviewing(true);
+      console.log("[handlePreview] Starting preview...");
       const result = await previewMapping();
+      console.log("[handlePreview] Result received:", result);
+      console.log("[handlePreview] result.ok:", result?.ok);
+      console.log("[handlePreview] result.rows:", result?.rows);
+      console.log("[handlePreview] result.rows type:", typeof result?.rows);
+      console.log("[handlePreview] result.rows is array:", Array.isArray(result?.rows));
+      
       setPreviewResult(result);
       
-      if (result.errors.length === 0) {
-        showToast(`Preview successful! ${result.samplesRead} samples read, ${result.normalizedSuccessfully} normalized`, "success");
-      } else {
-        showToast(`Preview completed with ${result.errors.length} error(s)`, "warning");
+      if (result?.ok && !result?.hasErrors) {
+        const samplesRead = Array.isArray(result.rows) ? result.rows.length : 0;
+        showToast(`Preview successful! ${samplesRead} samples processed`, "success");
+      } else if (result?.hasErrors) {
+        const errorCount = Array.isArray(result.rows) 
+          ? result.rows.filter(r => r.normalizationErrors && r.normalizationErrors.length > 0).length 
+          : 0;
+        showToast(`Preview completed with ${errorCount} error(s)`, "warning");
+      } else if (result?.error) {
+        showToast(`Preview failed: ${result.error}`, "error");
       }
     } catch (error: any) {
+      console.error("[handlePreview] Error caught:", error);
       showToast(`Preview failed: ${error.message}`, "error");
     } finally {
       setPreviewing(false);
@@ -308,11 +327,19 @@ export function FieldMappingWizard() {
     );
   }
 
-  const enabledFields = fields.filter(f => f.isEnabled);
-  const manualFields = enabledFields.filter(f => f.type !== "computed");
-  const computedFields = enabledFields.filter(f => f.type === "computed");
-  const requiredManualFields = manualFields.filter(f => f.required);
-  const optionalManualFields = manualFields.filter(f => !f.required);
+  const enabledFields = (fields || []).filter(f => f?.isEnabled);
+  const manualFields = enabledFields.filter(f => f?.type !== "computed");
+  const computedFields = enabledFields.filter(f => f?.type === "computed");
+  const requiredManualFields = manualFields.filter(f => f?.required);
+  const optionalManualFields = manualFields.filter(f => !f?.required);
+
+  // Debug logging
+  console.log("[FieldMappingWizard] Render state:", {
+    fieldsLength: fields?.length,
+    boardsLength: boards?.length,
+    primaryBoardId,
+    selectedBoard: boards?.find(b => b.id === primaryBoardId) !== undefined
+  });
 
   return (
     <div className={`min-h-screen p-8 ${isDark ? "bg-gray-900" : "bg-gray-50"}`}>
@@ -434,7 +461,7 @@ export function FieldMappingWizard() {
                     ✅ Selected Board: {selectedBoard.name}
                   </div>
                   <div className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-                    📊 {selectedBoard.columns.length} columns available
+                    📊 {selectedBoard.columns?.length || 0} columns available
                   </div>
                 </div>
               )}
@@ -701,13 +728,35 @@ export function FieldMappingWizard() {
                 </div>
                 
                 {!mappings.deal_won_status_column ? (
-                  <div className={`p-3 rounded border ${
-                    isDark ? "bg-yellow-900/20 border-yellow-800 text-yellow-400" : "bg-yellow-50 border-yellow-200 text-yellow-700"
+                  <div className={`p-4 rounded border ${
+                    isDark ? "bg-yellow-900/20 border-yellow-800" : "bg-yellow-50 border-yellow-200"
                   }`}>
-                    ⚠️ Please map "Deal Won Status Column" in Step 3 first
+                    <p className={`font-medium mb-2 ${isDark ? "text-yellow-400" : "text-yellow-700"}`}>
+                      ⚠️ Configuration Required
+                    </p>
+                    <p className={`text-sm mb-3 ${isDark ? "text-yellow-300" : "text-yellow-600"}`}>
+                      Please map <strong>"Deal Won Status Column"</strong> in Step 3 first. 
+                      This column contains the statuses for this dropdown.
+                    </p>
+                    <button
+                      onClick={() => setStep(3)}
+                      className={`px-4 py-2 rounded font-medium ${
+                        isDark 
+                          ? "bg-yellow-600 hover:bg-yellow-700 text-white" 
+                          : "bg-yellow-600 hover:bg-yellow-700 text-white"
+                      }`}
+                    >
+                      ← Go Back to Step 3
+                    </button>
                   </div>
                 ) : loadingDealWonLabels ? (
                   <Skeleton className="h-12 w-full" />
+                ) : dealWonStatusLabels.length === 0 ? (
+                  <div className={`p-3 rounded border ${
+                    isDark ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-gray-50 border-gray-300 text-gray-600"
+                  }`}>
+                    No status options found in the selected column. Please check your Monday.com board configuration.
+                  </div>
                 ) : (
                   <MultiSelectDropdown
                     options={dealWonStatusLabels}
@@ -778,13 +827,35 @@ export function FieldMappingWizard() {
                 </div>
                 
                 {!mappings.deal_won_status_column ? (
-                  <div className={`p-3 rounded border ${
-                    isDark ? "bg-yellow-900/20 border-yellow-800 text-yellow-400" : "bg-yellow-50 border-yellow-200 text-yellow-700"
+                  <div className={`p-4 rounded border ${
+                    isDark ? "bg-yellow-900/20 border-yellow-800" : "bg-yellow-50 border-yellow-200"
                   }`}>
-                    ⚠️ Please map "Deal Won Status Column" in Step 3 first
+                    <p className={`font-medium mb-2 ${isDark ? "text-yellow-400" : "text-yellow-700"}`}>
+                      ⚠️ Configuration Required
+                    </p>
+                    <p className={`text-sm mb-3 ${isDark ? "text-yellow-300" : "text-yellow-600"}`}>
+                      Please map <strong>"Deal Won Status Column"</strong> in Step 3 first. 
+                      This column contains the statuses for this dropdown.
+                    </p>
+                    <button
+                      onClick={() => setStep(3)}
+                      className={`px-4 py-2 rounded font-medium ${
+                        isDark 
+                          ? "bg-yellow-600 hover:bg-yellow-700 text-white" 
+                          : "bg-yellow-600 hover:bg-yellow-700 text-white"
+                      }`}
+                    >
+                      ← Go Back to Step 3
+                    </button>
                   </div>
                 ) : loadingDealWonLabels ? (
                   <Skeleton className="h-12 w-full" />
+                ) : dealWonStatusLabels.length === 0 ? (
+                  <div className={`p-3 rounded border ${
+                    isDark ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-gray-50 border-gray-300 text-gray-600"
+                  }`}>
+                    No status options found in the selected column. Please check your Monday.com board configuration.
+                  </div>
                 ) : (
                   <MultiSelectDropdown
                     options={dealWonStatusLabels}
@@ -823,13 +894,35 @@ export function FieldMappingWizard() {
                 </div>
                 
                 {!mappings.deal_won_status_column ? (
-                  <div className={`p-3 rounded border ${
-                    isDark ? "bg-yellow-900/20 border-yellow-800 text-yellow-400" : "bg-yellow-50 border-yellow-200 text-yellow-700"
+                  <div className={`p-4 rounded border ${
+                    isDark ? "bg-yellow-900/20 border-yellow-800" : "bg-yellow-50 border-yellow-200"
                   }`}>
-                    ⚠️ Please map "Deal Won Status Column" in Step 3 first
+                    <p className={`font-medium mb-2 ${isDark ? "text-yellow-400" : "text-yellow-700"}`}>
+                      ⚠️ Configuration Required
+                    </p>
+                    <p className={`text-sm mb-3 ${isDark ? "text-yellow-300" : "text-yellow-600"}`}>
+                      Please map <strong>"Deal Won Status Column"</strong> in Step 3 first. 
+                      This column contains the statuses for this dropdown.
+                    </p>
+                    <button
+                      onClick={() => setStep(3)}
+                      className={`px-4 py-2 rounded font-medium ${
+                        isDark 
+                          ? "bg-yellow-600 hover:bg-yellow-700 text-white" 
+                          : "bg-yellow-600 hover:bg-yellow-700 text-white"
+                      }`}
+                    >
+                      ← Go Back to Step 3
+                    </button>
                   </div>
                 ) : loadingDealWonLabels ? (
                   <Skeleton className="h-12 w-full" />
+                ) : dealWonStatusLabels.length === 0 ? (
+                  <div className={`p-3 rounded border ${
+                    isDark ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-gray-50 border-gray-300 text-gray-600"
+                  }`}>
+                    No status options found in the selected column. Please check your Monday.com board configuration.
+                  </div>
                 ) : (
                   <MultiSelectDropdown
                     options={dealWonStatusLabels}
@@ -911,7 +1004,7 @@ export function FieldMappingWizard() {
                   📋 Primary Board
                 </h3>
                 <div className={`text-sm ${isDark ? "text-gray-300" : "text-gray-700"}`}>
-                  {primaryBoardName} ({selectedBoard?.columns.length} columns)
+                  {primaryBoardName} ({selectedBoard?.columns?.length || 0} columns)
                 </div>
               </div>
 
@@ -923,8 +1016,8 @@ export function FieldMappingWizard() {
                 </h3>
                 <div className={`text-sm space-y-1 ${isDark ? "text-gray-300" : "text-gray-700"}`}>
                   {Object.entries(mappings).map(([fieldId, mapping]) => {
-                    const field = fields.find(f => f.id === fieldId);
-                    const column = selectedBoard?.columns.find(c => c.id === (mapping as any).columnId);
+                    const field = (fields || []).find(f => f.id === fieldId);
+                    const column = selectedBoard?.columns?.find(c => c.id === (mapping as any).columnId);
                     return field && column ? (
                       <div key={fieldId}>• {field.label} → {column.title}</div>
                     ) : null;
@@ -996,7 +1089,7 @@ export function FieldMappingWizard() {
             </div>
 
             {/* Preview Results */}
-            {previewResult && (
+            {previewResult && previewResult.rows && (
               <div className={`mb-6 p-4 rounded-lg border ${
                 isDark ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-200"
               }`}>
@@ -1005,19 +1098,25 @@ export function FieldMappingWizard() {
                 </h3>
                 <div className="space-y-2 text-sm">
                   <div className={isDark ? "text-gray-300" : "text-gray-700"}>
-                    ✓ {previewResult.samplesRead} samples read from Monday.com
+                    ✓ {Array.isArray(previewResult.rows) ? previewResult.rows.length : 0} samples processed
                   </div>
-                  <div className={isDark ? "text-gray-300" : "text-gray-700"}>
-                    ✓ {previewResult.normalizedSuccessfully} records normalized successfully
-                  </div>
-                  {previewResult.errors.length > 0 && (
+                  {previewResult.hasErrors && Array.isArray(previewResult.rows) && (
                     <div className={`mt-3 ${isDark ? "text-red-400" : "text-red-600"}`}>
-                      <div className="font-medium mb-1">Errors:</div>
+                      <div className="font-medium mb-1">Normalization Errors:</div>
                       <ul className="space-y-1">
-                        {previewResult.errors.map((err, idx) => (
-                          <li key={idx}>• {err.field}: {err.error}</li>
-                        ))}
+                        {previewResult.rows
+                          .filter(row => row.normalizationErrors && row.normalizationErrors.length > 0)
+                          .map((row, idx) => (
+                            <li key={idx}>
+                              • {row.entity}: {row.normalizationErrors?.join(", ")}
+                            </li>
+                          ))}
                       </ul>
+                    </div>
+                  )}
+                  {!previewResult.hasErrors && (
+                    <div className={`mt-2 ${isDark ? "text-green-400" : "text-green-600"}`}>
+                      ✓ All samples normalized successfully!
                     </div>
                   )}
                 </div>

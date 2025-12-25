@@ -222,6 +222,30 @@ export class MockMondayClient {
   }
 
   /**
+   * Fetch board samples (items from multiple boards)
+   */
+  async fetchBoardSamples(boardIds: string[], limitPerBoard: number = 10): Promise<any[]> {
+    this.callCount++;
+
+    if (this.shouldFail) {
+      const error = new Error(this.failureMessage);
+      this.shouldFail = false;
+      throw error;
+    }
+
+    return boardIds.map(boardId => {
+      const items = mockItems
+        .filter(item => item.board.id === boardId)
+        .slice(0, limitPerBoard);
+      
+      return {
+        boardId,
+        items,
+      };
+    });
+  }
+
+  /**
    * Mock GraphQL query
    */
   async query(query: string, variables?: Record<string, any>): Promise<any> {
