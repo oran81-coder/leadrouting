@@ -25,6 +25,10 @@ export function managerRoutes() {
   const ORG_ID = "org_1";
   const ACTOR = "manager";
 
+  /**
+   * GET /manager/proposals
+   * List all proposals with optional filters
+   */
   r.get("/proposals", async (req, res) => {
   const status = req.query?.status ? String(req.query.status) : undefined;
   const cursor = req.query?.cursor ? String(req.query.cursor) : undefined;
@@ -47,6 +51,36 @@ export function managerRoutes() {
     nextCursor: result.nextCursor,
   });
 });
+
+  /**
+   * GET /manager/proposals/:id
+   * Get detailed proposal with full explanation
+   */
+  r.get("/proposals/:id", async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const proposal = await proposalRepo.getById(ORG_ID, id);
+      
+      if (!proposal) {
+        return res.status(404).json({ 
+          ok: false, 
+          error: "Proposal not found" 
+        });
+      }
+      
+      return res.json({
+        ok: true,
+        proposal: toManagerProposalDTO(proposal),
+      });
+    } catch (error: any) {
+      console.error("[manager/proposals/:id] Error:", error);
+      return res.status(500).json({
+        ok: false,
+        error: "Failed to fetch proposal",
+        message: error.message,
+      });
+    }
+  });
 
 
   r.post("/proposals/:id/approve", async (req, res) => {

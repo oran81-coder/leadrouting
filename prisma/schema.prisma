@@ -298,6 +298,57 @@ model AgentMetricsSnapshot {
 }
 
 // ============================================
+// Phase 1: Agent Profiling
+// ============================================
+
+model AgentProfile {
+  id                    String   @id @default(cuid())
+  orgId                 String
+  agentUserId           String
+  agentName             String?
+  
+  // Performance Metrics
+  conversionRate        Float?   // 0-1 scale
+  totalLeadsHandled     Int      @default(0)
+  totalLeadsConverted   Int      @default(0)
+  
+  // Revenue Metrics
+  avgDealSize           Float?
+  totalRevenue          Float    @default(0)
+  
+  // Speed Metrics
+  avgResponseTime       Float?   // Seconds
+  
+  // Capacity Metrics
+  availability          Float    @default(1)    // 0-1 scale
+  currentActiveLeads    Int      @default(0)
+  dailyLeadsToday       Int      @default(0)
+  
+  // Momentum Metrics
+  hotStreakCount        Int      @default(0)
+  hotStreakActive       Boolean  @default(false)
+  
+  // Burnout Indicators
+  burnoutScore          Float    @default(0)    // 0-100
+  timeSinceLastWin      BigInt?  // Milliseconds
+  timeSinceLastActivity BigInt?  // Milliseconds
+  
+  // Domain Expertise (JSON)
+  industryScores        String   @default("{}")  // JSON: { "SaaS": 85, "Retail": 52 }
+  
+  // Metadata
+  computedAt            DateTime @default(now())
+  dataWindowDays        Int      @default(90)
+  updatedAt             DateTime @updatedAt
+  
+  @@unique([orgId, agentUserId])
+  @@index([orgId])
+  @@index([orgId, agentUserId])
+  @@index([orgId, availability])
+  @@index([orgId, computedAt])
+}
+
+// ============================================
 // Phase 5.1: Authentication & Authorization
 // ============================================
 
