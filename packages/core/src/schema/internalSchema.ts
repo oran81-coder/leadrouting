@@ -131,6 +131,39 @@ export const DEFAULT_CORE_FIELDS: FieldDefinition[] = [
     group: "Lead",
     description: "Automatically captured from Monday item creation time"
   },
+  { 
+    id: "assigned_agent", 
+    label: "Assigned Agent", 
+    entity: "lead", 
+    type: "text", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Lead",
+    description: "Current agent handling this lead (used for performance tracking and availability calculation)"
+  },
+  { 
+    id: "next_call_date", 
+    label: "Next Call Date (Optional)", 
+    entity: "lead", 
+    type: "date", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Lead",
+    description: "Optional: Next scheduled contact date (if column exists)"
+  },
+  { 
+    id: "first_contact_at", 
+    label: "First Contact (Auto-Detected)", 
+    entity: "lead", 
+    type: "computed", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Lead",
+    description: "Auto-detected from Updates/Activity Log. Used to calculate Response Time KPI."
+  },
 
   // Agent core
   { 
@@ -170,6 +203,17 @@ export const DEFAULT_CORE_FIELDS: FieldDefinition[] = [
     description: "Current status of the deal"
   },
   { 
+    id: "deal_won_status_column", 
+    label: "Deal Won Status Column", 
+    entity: "deal", 
+    type: "status", 
+    required: false, 
+    isCore: true, 
+    active: true, 
+    group: "Deal",
+    description: "Column containing 'Deal Won' status (can be same as Deal Status or a separate column)"
+  },
+  { 
     id: "deal_close_date", 
     label: "Close Date (Optional Column)", 
     entity: "deal", 
@@ -179,17 +223,6 @@ export const DEFAULT_CORE_FIELDS: FieldDefinition[] = [
     active: true, 
     group: "Deal",
     description: "Optional: If column exists, use it. Otherwise, use status change timestamp"
-  },
-  { 
-    id: "deal_amount", 
-    label: "Deal Amount", 
-    entity: "deal", 
-    type: "number", 
-    required: false, 
-    isCore: true, 
-    active: true, 
-    group: "Deal",
-    description: "Final deal value"
   },
 ];
 

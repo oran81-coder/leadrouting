@@ -26,11 +26,14 @@ const DEFAULT_INTERNAL_FIELDS: InternalFieldDefinition[] = [
   { id: "lead_industry", label: "Industry", type: "status", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Industry/vertical of the lead" },
   { id: "lead_deal_size", label: "Deal Size / Amount", type: "number", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Potential deal value" },
   { id: "lead_created_at", label: "Created At (Auto)", type: "date", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Automatically captured from Monday item creation time" },
-  { id: "agent_domain", label: "Agent Domain (Optional)", type: "status", required: false, isCore: true, isEnabled: true, group: "Agent", description: "Optional: Map to Monday column OR system learns from Industry Performance metrics" },
+  { id: "assigned_agent", label: "Assigned Agent", type: "text", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Current agent handling this lead (used for performance tracking and availability calculation)" },
+  { id: "next_call_date", label: "Next Call Date (Optional)", type: "date", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Optional: Next scheduled contact date (if column exists)" },
+  { id: "first_contact_at", label: "First Contact (Auto-Detected)", type: "computed", required: false, isCore: true, isEnabled: true, group: "Lead", description: "Auto-detected from Updates/Activity Log. Used to calculate Response Time KPI." },
+  { id: "agent_domain", label: "Agent Domain (Optional)", type: "computed", required: false, isCore: true, isEnabled: true, group: "Agent", description: "Optional: Map to Monday column OR system learns from Industry Performance metrics" },
   { id: "agent_availability", label: "Availability (Auto-Calculated)", type: "computed", required: false, isCore: true, isEnabled: true, group: "Agent", description: "Calculated automatically from leads in-treatment count and daily quota" },
   { id: "deal_status", label: "Deal Status", type: "status", required: true, isCore: true, isEnabled: true, group: "Deal", description: "Current status of the deal" },
+  { id: "deal_won_status_column", label: "Deal Won Status Column", type: "status", required: false, isCore: true, isEnabled: true, group: "Deal", description: "Column containing 'Deal Won' status (can be same as Deal Status or a separate column)" },
   { id: "deal_close_date", label: "Close Date (Optional Column)", type: "date", required: false, isCore: true, isEnabled: true, group: "Deal", description: "Optional: If column exists, use it. Otherwise, use status change timestamp" },
-  { id: "deal_amount", label: "Deal Amount", type: "number", required: false, isCore: true, isEnabled: true, group: "Deal", description: "Final deal value" },
 ];
 
 export function FieldMappingWizard() {
@@ -56,11 +59,15 @@ export function FieldMappingWizard() {
   
   // Phase 2: Status Configuration
   const [statusConfig, setStatusConfig] = useState<StatusConfig>({
-    inTreatmentStatuses: [],
-    closedWonStatus: ""
+    closedWonStatuses: [],
+    closedLostStatuses: [],
+    excludedStatuses: []
   });
+  
   const [statusLabels, setStatusLabels] = useState<string[]>([]);
+  const [dealWonStatusLabels, setDealWonStatusLabels] = useState<string[]>([]);
   const [loadingStatusLabels, setLoadingStatusLabels] = useState(false);
+  const [loadingDealWonLabels, setLoadingDealWonLabels] = useState(false);
   
   const [previewResult, setPreviewResult] = useState<MappingPreviewResult | null>(null);
 
@@ -128,12 +135,33 @@ export function FieldMappingWizard() {
         setStatusLabels(labels.map(l => l.label));
       } catch (error: any) {
         console.error("Failed to load status labels:", error);
+        setStatusLabels([]);
       } finally {
         setLoadingStatusLabels(false);
       }
     }
     loadStatusLabels();
   }, [primaryBoardId, mappings.deal_status]);
+
+  // Load Deal Won status labels when deal_won_status_column mapping changes
+  useEffect(() => {
+    async function loadDealWonLabels() {
+      if (!primaryBoardId || !mappings.deal_won_status_column) return;
+      
+      try {
+        setLoadingDealWonLabels(true);
+        const columnId = (mappings.deal_won_status_column as any).columnId;
+        const labels = await listMondayStatusLabels(primaryBoardId, columnId);
+        setDealWonStatusLabels(labels.map(l => l.label));
+      } catch (error: any) {
+        console.error("Failed to load Deal Won labels:", error);
+        setDealWonStatusLabels([]);
+      } finally {
+        setLoadingDealWonLabels(false);
+      }
+    }
+    loadDealWonLabels();
+  }, [primaryBoardId, mappings.deal_won_status_column]);
 
   const selectedBoard = boards.find(b => b.id === primaryBoardId);
 
@@ -198,11 +226,8 @@ export function FieldMappingWizard() {
     }
     
     if (step >= 4) {
-      if (statusConfig.inTreatmentStatuses.length === 0) {
-        errors.push("At least one 'In Treatment' status must be selected");
-      }
-      if (!statusConfig.closedWonStatus) {
-        errors.push("'Deal Won' status must be selected");
+      if (!statusConfig.closedWonStatuses || statusConfig.closedWonStatuses.length === 0) {
+        errors.push("At least one 'Deal Won' status must be selected");
       }
     }
 
@@ -647,73 +672,198 @@ export function FieldMappingWizard() {
             </p>
 
             <div className="space-y-6">
-              {/* In-Treatment Statuses */}
+              {/* Excluded Statuses (Optional) */}
               <div className={`p-4 rounded-lg border ${
-                isDark ? "bg-gray-700 border-gray-600" : "bg-orange-50 border-orange-200"
+                isDark ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-200"
               }`}>
                 <h3 className={`text-lg font-medium mb-2 flex items-center ${
-                  isDark ? "text-orange-400" : "text-orange-700"
+                  isDark ? "text-gray-400" : "text-gray-700"
                 }`}>
-                  <span className="mr-2">⚠️</span> Leads "In Treatment" Statuses
+                  <span className="mr-2">🗑️</span> Excluded Statuses (Optional)
                 </h3>
-                <p className={`text-sm mb-4 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-                  Select which status values indicate a lead is being actively handled by an agent.
-                  <br />
-                  These are used to calculate agent availability.
+                <p className={`text-sm mb-2 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  Select statuses that are <strong>NOT real leads</strong> and should be filtered out.
                 </p>
+                <div className={`mb-4 p-3 rounded border ${
+                  isDark ? "bg-gray-800 border-gray-600" : "bg-gray-100 border-gray-300"
+                }`}>
+                  <p className={`text-sm ${isDark ? "text-gray-300" : "text-gray-800"}`}>
+                    <strong>🚫 Purpose:</strong> Filter out noise/non-leads from ALL calculations
+                  </p>
+                  <p className={`text-xs mt-1 ${isDark ? "text-gray-400" : "text-gray-700"}`}>
+                    These are <strong>not real leads</strong> - just noise (spam, tests, duplicates)
+                  </p>
+                  <div className={`mt-2 pt-2 border-t ${isDark ? "border-gray-700" : "border-gray-200"}`}>
+                    <p className={`text-xs ${isDark ? "text-gray-500" : "text-gray-600"}`}>
+                      <strong>💡 Tip:</strong> Use "Deal Lost" for real leads that didn't convert. Use "Excluded" for items that were never real leads.
+                    </p>
+                  </div>
+                </div>
                 
-                {loadingStatusLabels ? (
+                {!mappings.deal_won_status_column ? (
+                  <div className={`p-3 rounded border ${
+                    isDark ? "bg-yellow-900/20 border-yellow-800 text-yellow-400" : "bg-yellow-50 border-yellow-200 text-yellow-700"
+                  }`}>
+                    ⚠️ Please map "Deal Won Status Column" in Step 3 first
+                  </div>
+                ) : loadingDealWonLabels ? (
                   <Skeleton className="h-12 w-full" />
                 ) : (
                   <MultiSelectDropdown
-                    options={statusLabels}
-                    selected={statusConfig.inTreatmentStatuses}
-                    onChange={(selected) => setStatusConfig(prev => ({ ...prev, inTreatmentStatuses: selected }))}
-                    placeholder="Select statuses..."
+                    options={dealWonStatusLabels}
+                    selected={statusConfig.excludedStatuses || []}
+                    onChange={(selected) => setStatusConfig(prev => ({ ...prev, excludedStatuses: selected }))}
+                    placeholder="Select statuses to exclude (optional)..."
                   />
                 )}
                 
                 <div className={`mt-3 text-sm ${isDark ? "text-gray-500" : "text-gray-500"}`}>
-                  💡 Example: "Relevant", "In Treatment", "No Answer", "Follow Up", "Pending"
+                  💡 Examples: "Spam", "Archived", "Test", "Duplicate", "Wrong Number"
                 </div>
               </div>
 
-              {/* Closed Won Status */}
+              {/* In Treatment Auto-Detection Info */}
+              <div className={`p-4 rounded-lg border ${
+                isDark ? "bg-gray-700 border-gray-600" : "bg-blue-50 border-blue-200"
+              }`}>
+                <h3 className={`text-lg font-medium mb-2 flex items-center ${
+                  isDark ? "text-blue-400" : "text-blue-700"
+                }`}>
+                  <span className="mr-2">🤖</span> "In Treatment" Detection (Auto)
+                </h3>
+                <p className={`text-sm mb-3 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  The system automatically detects which leads are "in treatment" using smart logic:
+                </p>
+                <div className={`p-3 rounded border ${
+                  isDark ? "bg-blue-900/20 border-blue-800" : "bg-blue-100 border-blue-300"
+                }`}>
+                  <div className={`text-sm font-mono ${isDark ? "text-blue-300" : "text-blue-800"}`}>
+                    In Treatment = (Assigned to Agent) AND NOT (Won/Lost/Excluded)
+                  </div>
+                </div>
+                <ul className={`mt-3 text-sm space-y-1 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  <li>✅ Lead must be assigned to an agent</li>
+                  <li>❌ Status is NOT "Deal Won"</li>
+                  <li>❌ Status is NOT "Deal Lost"</li>
+                  <li>🗑️ Status is NOT in Excluded list</li>
+                </ul>
+                <div className={`mt-3 p-2 rounded ${isDark ? "bg-gray-800" : "bg-white"}`}>
+                  <p className={`text-xs ${isDark ? "text-gray-500" : "text-gray-500"}`}>
+                    ℹ️ No need to manually select statuses - the system adapts automatically to any workflow!
+                  </p>
+                </div>
+              </div>
+
+              {/* Closed Won Statuses */}
               <div className={`p-4 rounded-lg border ${
                 isDark ? "bg-gray-700 border-gray-600" : "bg-green-50 border-green-200"
               }`}>
                 <h3 className={`text-lg font-medium mb-2 flex items-center ${
                   isDark ? "text-green-400" : "text-green-700"
                 }`}>
-                  <span className="mr-2">✅</span> "Deal Won" Status
+                  <span className="mr-2">✅</span> "Deal Won" Statuses (Required)
                 </h3>
-                <p className={`text-sm mb-4 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-                  Select the status that indicates a deal was successfully closed.
-                  <br />
-                  Used to automatically determine close date when no Close Date column is mapped.
+                <p className={`text-sm mb-2 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  Select all statuses that indicate a deal was <strong>successfully closed</strong>.
                 </p>
+                <div className={`mb-4 p-3 rounded border ${
+                  isDark ? "bg-green-900/20 border-green-800" : "bg-green-100 border-green-300"
+                }`}>
+                  <p className={`text-sm ${isDark ? "text-green-300" : "text-green-800"}`}>
+                    <strong>🎯 Purpose:</strong> Calculate close date & conversion rate
+                  </p>
+                  <p className={`text-xs mt-1 ${isDark ? "text-green-400" : "text-green-700"}`}>
+                    These are <strong>real leads that were won</strong> by the agent
+                  </p>
+                </div>
                 
-                {loadingStatusLabels ? (
+                {!mappings.deal_won_status_column ? (
+                  <div className={`p-3 rounded border ${
+                    isDark ? "bg-yellow-900/20 border-yellow-800 text-yellow-400" : "bg-yellow-50 border-yellow-200 text-yellow-700"
+                  }`}>
+                    ⚠️ Please map "Deal Won Status Column" in Step 3 first
+                  </div>
+                ) : loadingDealWonLabels ? (
                   <Skeleton className="h-12 w-full" />
                 ) : (
-                  <select
-                    value={statusConfig.closedWonStatus}
-                    onChange={(e) => setStatusConfig(prev => ({ ...prev, closedWonStatus: e.target.value }))}
-                    className={`w-full px-4 py-3 rounded-lg border ${
-                      isDark
-                        ? "bg-gray-800 border-gray-600 text-white"
-                        : "bg-white border-gray-300 text-gray-900"
-                    } focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
-                  >
-                    <option value="">Select status...</option>
-                    {statusLabels.map(label => (
-                      <option key={label} value={label}>{label}</option>
-                    ))}
-                  </select>
+                  <MultiSelectDropdown
+                    options={dealWonStatusLabels}
+                    selected={statusConfig.closedWonStatuses || []}
+                    onChange={(selected) => setStatusConfig(prev => ({ ...prev, closedWonStatuses: selected }))}
+                    placeholder="Select statuses..."
+                  />
                 )}
                 
                 <div className={`mt-3 text-sm ${isDark ? "text-gray-500" : "text-gray-500"}`}>
-                  💡 Example: "Sale Completed", "Closed Won", "Done"
+                  💡 Examples: "Closed Won", "Sale Completed", "Contract Signed", "Done"
+                </div>
+              </div>
+
+              {/* Closed Lost Statuses (Optional) */}
+              <div className={`p-4 rounded-lg border ${
+                isDark ? "bg-gray-700 border-gray-600" : "bg-red-50 border-red-200"
+              }`}>
+                <h3 className={`text-lg font-medium mb-2 flex items-center ${
+                  isDark ? "text-red-400" : "text-red-700"
+                }`}>
+                  <span className="mr-2">❌</span> "Deal Lost" Statuses (Optional)
+                </h3>
+                <p className={`text-sm mb-2 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  Select all statuses that indicate a deal was <strong>lost or rejected</strong>.
+                </p>
+                <div className={`mb-4 p-3 rounded border ${
+                  isDark ? "bg-red-900/20 border-red-800" : "bg-red-100 border-red-300"
+                }`}>
+                  <p className={`text-sm ${isDark ? "text-red-300" : "text-red-800"}`}>
+                    <strong>📊 Purpose:</strong> Calculate conversion rate (Won / (Won + Lost))
+                  </p>
+                  <p className={`text-xs mt-1 ${isDark ? "text-red-400" : "text-red-700"}`}>
+                    These are <strong>real leads that were worked on</strong> but not converted
+                  </p>
+                </div>
+                
+                {!mappings.deal_won_status_column ? (
+                  <div className={`p-3 rounded border ${
+                    isDark ? "bg-yellow-900/20 border-yellow-800 text-yellow-400" : "bg-yellow-50 border-yellow-200 text-yellow-700"
+                  }`}>
+                    ⚠️ Please map "Deal Won Status Column" in Step 3 first
+                  </div>
+                ) : loadingDealWonLabels ? (
+                  <Skeleton className="h-12 w-full" />
+                ) : (
+                  <MultiSelectDropdown
+                    options={dealWonStatusLabels}
+                    selected={statusConfig.closedLostStatuses || []}
+                    onChange={(selected) => setStatusConfig(prev => ({ ...prev, closedLostStatuses: selected }))}
+                    placeholder="Select statuses (optional)..."
+                  />
+                )}
+                
+                <div className={`mt-3 text-sm ${isDark ? "text-gray-500" : "text-gray-500"}`}>
+                  💡 Examples: "Closed Lost", "Not Interested", "Rejected", "Not Qualified", "Too Expensive"
+                </div>
+              </div>
+
+              {/* First Contact - AUTO DETECTED */}
+              <div className={`p-4 rounded-lg border ${
+                isDark ? "bg-gray-700 border-gray-600" : "bg-purple-50 border-purple-200"
+              }`}>
+                <h3 className={`text-lg font-medium mb-2 flex items-center ${
+                  isDark ? "text-purple-400" : "text-purple-700"
+                }`}>
+                  <span className="mr-2">🤖</span> First Contact Detection (Auto)
+                </h3>
+                <p className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  The system automatically detects when an agent first contacts a lead by monitoring:
+                </p>
+                <ul className={`mt-2 text-sm space-y-1 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                  <li>• 📝 <strong>Updates/Chat Messages</strong> - First message sent by agent</li>
+                  <li>• 📊 <strong>Activity Log</strong> - First action performed on the lead</li>
+                </ul>
+                <div className={`mt-3 p-3 rounded border ${
+                  isDark ? "bg-purple-900/20 border-purple-800 text-purple-300" : "bg-purple-100 border-purple-300 text-purple-800"
+                }`}>
+                  ℹ️ <strong>Response Time</strong> is calculated automatically as the time between lead assignment and first contact.
                 </div>
               </div>
             </div>
@@ -731,7 +881,7 @@ export function FieldMappingWizard() {
               </button>
               <button
                 onClick={() => setStep(5)}
-                disabled={!statusConfig.closedWonStatus || statusConfig.inTreatmentStatuses.length === 0}
+                disabled={!mappings.deal_won_status_column || !statusConfig.closedWonStatuses || statusConfig.closedWonStatuses.length === 0}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next: Preview →
@@ -789,8 +939,16 @@ export function FieldMappingWizard() {
                   🎯 Status Configuration
                 </h3>
                 <div className={`text-sm space-y-1 ${isDark ? "text-gray-300" : "text-gray-700"}`}>
-                  <div>• In Treatment: {statusConfig.inTreatmentStatuses.join(", ")}</div>
-                  <div>• Deal Won: {statusConfig.closedWonStatus}</div>
+                  <div>• Deal Won: {statusConfig.closedWonStatuses?.join(", ") || "Not configured"}</div>
+                  {statusConfig.closedLostStatuses && statusConfig.closedLostStatuses.length > 0 && (
+                    <div>• Deal Lost: {statusConfig.closedLostStatuses.join(", ")}</div>
+                  )}
+                  {statusConfig.excludedStatuses && statusConfig.excludedStatuses.length > 0 && (
+                    <div>• Excluded: {statusConfig.excludedStatuses.join(", ")}</div>
+                  )}
+                  <div className={`mt-2 pt-2 border-t ${isDark ? "border-gray-600" : "border-gray-300"}`}>
+                    <span className="font-medium">🤖 In Treatment:</span> Auto-detected (Assigned + Not Won/Lost/Excluded)
+                  </div>
                 </div>
               </div>
             </div>

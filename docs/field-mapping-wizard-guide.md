@@ -240,8 +240,10 @@ interface ColumnRef {
 }
 
 interface StatusConfig {
-  inTreatmentStatuses: string[]; // e.g., ["Relevant", "In Treatment"]
-  closedWonStatus: string; // e.g., "Sale Completed"
+  closedWonStatuses: string[]; // e.g., ["Closed Won", "Sale Completed"]
+  closedLostStatuses?: string[]; // e.g., ["Closed Lost", "Not Interested"] (optional)
+  excludedStatuses?: string[]; // e.g., ["Spam", "Archived"] (optional)
+  // Note: "In Treatment" is auto-detected as: (Assigned to Agent) AND NOT (Won/Lost/Excluded)
 }
 
 interface InternalFieldDefinition {

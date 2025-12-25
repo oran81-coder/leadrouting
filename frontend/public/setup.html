@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup - Lead Routing Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            display: none;
+        }
+        .info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔧 Setup Lead Routing Manager</h1>
+        
+        <div class="info">
+            <strong>📌 הדרכה:</strong>
+            <br>לחץ על הכפתור למטה כדי להגדיר את ה-API Key.
+            <br>זה יקח רק שנייה אחת.
+        </div>
+
+        <button onclick="setupApiKey()">✅ הגדר API Key</button>
+        
+        <div class="success" id="success">
+            <strong>✅ הצלחה!</strong>
+            <br>API Key הוגדר בהצלחה!
+            <br><br>
+            <a href="/" style="color: #155724; font-weight: bold;">➡️ לחץ כאן כדי לעבור לאפליקציה</a>
+        </div>
+    </div>
+
+    <script>
+        function setupApiKey() {
+            // Clear old data
+            localStorage.clear();
+            
+            // Set API key
+            localStorage.setItem('apiKey', 'dev_key_123');
+            
+            // Show success message
+            document.getElementById('success').style.display = 'block';
+            document.querySelector('button').style.display = 'none';
+            
+            // Redirect after 2 seconds
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        }
+
+        // Always allow clicking - even if already set
+        const currentKey = localStorage.getItem('apiKey');
+        if (currentKey) {
+            document.querySelector('button').textContent = '🔄 רענן והגדר מחדש';
+            document.querySelector('.info strong').textContent = '⚠️ שים לב:';
+            document.querySelector('.info').innerHTML += '<br><br>יש API Key קיים אבל הוא לא עובד.<br><strong>לחץ על הכפתור כדי לתקן!</strong>';
+        }
+    </script>
+</body>
+</html>
+

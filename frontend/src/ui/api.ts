@@ -293,8 +293,11 @@ export interface InternalFieldDefinition {
 }
 
 export interface StatusConfig {
-  inTreatmentStatuses: string[];
-  closedWonStatus: string;
+  closedWonStatuses: string[];
+  closedLostStatuses?: string[];
+  excludedStatuses?: string[];
+  // Note: "In Treatment" is auto-detected as: (Assigned to Agent) AND NOT (Won/Lost/Excluded)
+  // Note: First Contact is auto-detected from Updates/Activity Log
 }
 
 export interface WritebackTargets {

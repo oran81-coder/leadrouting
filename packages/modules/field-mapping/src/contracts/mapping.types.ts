@@ -38,11 +38,18 @@ export interface InternalFieldDefinition {
  * Status configuration for smart automation
  */
 export interface StatusConfig {
-  // Status values that indicate "lead in treatment" (for availability calc)
-  inTreatmentStatuses: string[]; // e.g., ["Relevant", "In Treatment", "No Answer"]
+  // Status values that indicate "deal won" (for close date calc and conversion rate)
+  // Multiple statuses can indicate a successful deal: "Closed Won", "Sale Completed", etc.
+  closedWonStatuses: string[]; // e.g., ["Closed Won", "Sale Completed"]
   
-  // Status value that indicates "deal won" (for close date calc)
-  closedWonStatus: string; // e.g., "Sale Completed"
+  // Optional: Status values that indicate "deal lost" (for conversion rate calc)
+  // Real leads that were worked on but lost: "Closed Lost", "Not Interested", "Rejected"
+  closedLostStatuses?: string[]; // e.g., ["Closed Lost", "Not Interested", "Rejected"]
+  
+  // Optional: Status values to exclude from all calculations (noise/non-leads)
+  // Not real leads - should be filtered out: "Spam", "Archived", "Test", "Duplicate"
+  // Note: "In Treatment" is auto-detected as: (Assigned to Agent) AND NOT (Won/Lost/Excluded)
+  excludedStatuses?: string[];
 }
 
 /**

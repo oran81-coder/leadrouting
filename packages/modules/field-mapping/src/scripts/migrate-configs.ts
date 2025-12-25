@@ -75,8 +75,9 @@ async function migrateConfig() {
   // Step 3: Add default statusConfig
   console.log("\n⚙️  Step 3: Adding statusConfig...");
   const statusConfig: StatusConfig = oldConfig.statusConfig || {
-    inTreatmentStatuses: ["Relevant", "In Treatment", "No Answer"],
-    closedWonStatus: "Sale Completed",
+    closedWonStatuses: ["Sale Completed", "Closed Won"],
+    closedLostStatuses: ["Closed Lost", "Not Interested"],
+    excludedStatuses: ["Spam", "Archived"],
   };
   console.log(`✅ statusConfig:`, statusConfig);
   
@@ -134,7 +135,7 @@ async function migrateConfig() {
   console.log(`   Primary Board ID: ${primaryBoardId}`);
   console.log(`   Fields: ${oldConfig.fields.length} → ${newFields.length}`);
   console.log(`   Mappings: ${Object.keys(oldConfig.mappings).length} → ${Object.keys(newMappings).length}`);
-  console.log(`   Status Config: ${statusConfig.inTreatmentStatuses.length} statuses`);
+  console.log(`   Status Config: Won=${statusConfig.closedWonStatuses.length}, Lost=${statusConfig.closedLostStatuses?.length || 0}, Excluded=${statusConfig.excludedStatuses?.length || 0}`);
   console.log("\n✅ Migration completed successfully!");
 }
 

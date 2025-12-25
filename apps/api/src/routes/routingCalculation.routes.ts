@@ -59,8 +59,9 @@ export function routingCalculationRoutes() {
       const fullSettings = {
         ...settings,
         statusConfig: {
-          inTreatmentStatuses: ["Relevant", "In Treatment", "No Answer"],
-          closedWonStatus: "Sale Completed",
+          closedWonStatuses: ["Sale Completed", "Closed Won"],
+          closedLostStatuses: ["Closed Lost", "Not Interested"],
+          excludedStatuses: ["Spam", "Archived"],
         },
       };
 

@@ -54,6 +54,7 @@ export class PrismaLeadFactRepo {
   }
 
   /**
+   * @deprecated Use countActiveLeadsByAgent() instead (smart auto-detection)
    * Phase 2: Count leads assigned to agent with specific statuses
    * Used for availability calculation
    */
@@ -97,6 +98,45 @@ export class PrismaLeadFactRepo {
       orderBy: {
         enteredAt: 'desc',
       },
+    });
+  }
+
+  /**
+   * Phase 2: Count "active" leads for an agent using smart detection
+   * "Active" = Assigned to agent AND NOT (Won/Lost/Excluded)
+   * Used for availability calculation with auto-detection logic
+   * 
+   * @param orgId - Organization ID
+   * @param agentUserId - Monday user ID of the agent
+   * @param closedWonStatuses - Statuses that indicate deal won
+   * @param closedLostStatuses - Optional statuses that indicate deal lost
+   * @param excludedStatuses - Optional list of statuses to exclude (e.g., "Spam", "Archived")
+   * @returns Count of active leads
+   */
+  async countActiveLeadsByAgent(
+    orgId: string,
+    agentUserId: string,
+    closedWonStatuses: string[],
+    closedLostStatuses?: string[],
+    excludedStatuses?: string[]
+  ): Promise<number> {
+    const prisma = getPrisma();
+    
+    // Build list of statuses to exclude
+    const excludedStatusList = [...closedWonStatuses];
+    if (closedLostStatuses && closedLostStatuses.length > 0) {
+      excludedStatusList.push(...closedLostStatuses);
+    }
+    if (excludedStatuses && excludedStatuses.length > 0) {
+      excludedStatusList.push(...excludedStatuses);
+    }
+    
+    return prisma.leadFact.count({
+      where: {
+        orgId,
+        assignedUserId: agentUserId,              // Must be assigned to this agent
+        statusValue: { notIn: excludedStatusList } // Not in closed/excluded statuses
+      }
     });
   }
 }

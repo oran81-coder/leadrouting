@@ -33,11 +33,14 @@ export async function calculateAgentAvailability(
 ): Promise<AvailabilityScore> {
   const leadRepo = new PrismaLeadFactRepo();
   
-  // Count leads assigned to agent with "in treatment" statuses
-  const leadsInTreatment = await leadRepo.countByAgentAndStatuses(
+  // Count leads assigned to agent that are "active" (smart detection)
+  // Active = Assigned + NOT (Won/Lost/Excluded)
+  const leadsInTreatment = await leadRepo.countActiveLeadsByAgent(
     orgId,
     agentUserId,
-    statusConfig.inTreatmentStatuses
+    statusConfig.closedWonStatuses,
+    statusConfig.closedLostStatuses,
+    statusConfig.excludedStatuses
   );
   
   // Count leads assigned today

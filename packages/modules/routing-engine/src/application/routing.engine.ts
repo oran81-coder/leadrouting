@@ -45,8 +45,9 @@ export interface KPISettings {
   recentPerfWindowDays: number;
   dailyLeadThreshold: number;
   statusConfig: {
-    inTreatmentStatuses: string[];
-    closedWonStatus: string;
+    closedWonStatuses: string[];
+    closedLostStatuses?: string[];
+    excludedStatuses?: string[];
   };
 }
 

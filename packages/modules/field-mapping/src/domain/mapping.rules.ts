@@ -15,11 +15,8 @@ export function assertRequiredMapped(config: FieldMappingConfig) {
 
   // Validate statusConfig for automation features
   if (config.statusConfig) {
-    if (config.statusConfig.inTreatmentStatuses.length === 0) {
-      throw new ValidationError("At least one 'in treatment' status must be configured");
-    }
-    if (!config.statusConfig.closedWonStatus) {
-      throw new ValidationError("'Closed Won' status must be configured");
+    if (!config.statusConfig.closedWonStatuses || config.statusConfig.closedWonStatuses.length === 0) {
+      throw new ValidationError("At least one 'Closed Won' status must be configured");
     }
   }
 
