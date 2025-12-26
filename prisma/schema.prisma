@@ -410,3 +410,21 @@ model Session {
   @@index([userId, isRevoked, expiresAt]) // Active sessions by user
   @@index([isRevoked, expiresAt]) // Cleanup expired/revoked sessions
 }
+
+// Phase 2: Real-time Integration - Monday.com Webhooks
+model MondayWebhook {
+  id        String   @id @default(cuid())
+  orgId     String
+  boardId   String
+  webhookId String   // Monday.com webhook ID
+  url       String
+  event     String   // e.g., "create_pulse", "change_column_value"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, boardId, event])
+  @@index([orgId])
+  @@index([boardId])
+  @@index([isActive])
+}

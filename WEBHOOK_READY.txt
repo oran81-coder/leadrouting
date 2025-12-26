@@ -1,0 +1,43 @@
+==============================================
+  ✅ הכל מוכן! Webhook Infrastructure Ready!
+==============================================
+
+📡 Server Status:
+  ✅ Backend API: http://localhost:3000
+  ✅ Health Check: OK
+  ✅ Webhook Endpoint: /webhooks/monday OK
+
+🌐 ngrok Status:
+  ✅ Public URL: https://unsepultured-uncatastrophically-beulah.ngrok-free.dev
+  ✅ Tunneling to: localhost:3000
+
+⚙️ Environment:
+  ✅ PUBLIC_URL configured
+  ✅ WEBHOOK_SECRET configured
+
+👉 הצעד הבא שלך:
+  1. פתח את המערכת בדפדפן: http://localhost:5173
+  2. עבור ל-Admin Screen
+  3. לחץ 'Connect Monday.com'
+  4. הזן את ה-API Token שלך
+  5. שמור - המערכת תרשום webhook אוטומטית! 🎉
+
+📝 מה יקרה כאשר תחבר את Monday.com:
+  - המערכת תשמור את ה-API Token
+  - המערכת תרשום webhook ב-Monday.com אוטומטית
+  - הwebhook URL יהיה: https://unsepultured-uncatastrophically-beulah.ngrok-free.dev/webhooks/monday
+  - כל ליד חדש ב-Monday יתקבל אוטומטית במערכת
+  - routing proposal ייווצר אוטומטית לכל ליד חדש
+
+🎯 בדיקה:
+  אחרי החיבור, נסה:
+  1. הוסף item חדש בבורד ב-Monday.com
+  2. מלא את השדות הבסיסיים (חברה, אינדסטריה, deal size)
+  3. עבור ל-Manager Screen במערכת שלנו
+  4. תראה proposal חדש מופיע אוטומטית! 🚀
+
+⚠️ חשוב:
+  - השאר את ngrok רץ ברקע (טרמינל 19)
+  - השאר את השרת רץ ברקע (טרמינל 20)
+  - אם תסגור את ngrok, תצטרך לעדכן את PUBLIC_URL ב-.env ולחבר מחדש את Monday.com
+

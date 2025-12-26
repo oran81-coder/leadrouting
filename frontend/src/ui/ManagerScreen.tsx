@@ -36,6 +36,9 @@ export function ManagerScreen() {
   const [mondayUsers, setMondayUsers] = useState<MondayUser[]>([]);
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [overrideProposal, setOverrideProposal] = useState<ManagerProposalDTO | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(30); // seconds
+  const [countdown, setCountdown] = useState(30);
 
   async function fetchProposals() {
     setLoading(true);
@@ -70,6 +73,26 @@ export function ManagerScreen() {
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
+
+  // Auto-refresh logic
+  useEffect(() => {
+    if (!autoRefresh) {
+      setCountdown(refreshInterval);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          fetchProposals();
+          return refreshInterval;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, statusFilter]);
 
   async function handleApprove(id: string) {
     // Optimistic update - update UI immediately
@@ -383,6 +406,50 @@ export function ManagerScreen() {
             {loading ? "Loading..." : "Refresh"}
           </button>
         </Tooltip>
+
+        {/* Auto-Refresh Toggle */}
+        <Tooltip content={autoRefresh ? `Auto-refreshing every ${refreshInterval}s (${countdown}s remaining)` : "Enable auto-refresh"}>
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            aria-label="Toggle auto-refresh"
+            className={`px-4 py-2 rounded-lg font-medium border transition-colors ${
+              autoRefresh
+                ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+          >
+            {autoRefresh ? (
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Auto ({countdown}s)
+              </span>
+            ) : (
+              "Auto-Refresh"
+            )}
+          </button>
+        </Tooltip>
+
+        {/* Refresh Interval Selector */}
+        {autoRefresh && (
+          <select
+            value={refreshInterval}
+            onChange={(e) => {
+              const newInterval = parseInt(e.target.value);
+              setRefreshInterval(newInterval);
+              setCountdown(newInterval);
+            }}
+            className="px-3 py-2 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          >
+            <option value="10">10s</option>
+            <option value="30">30s</option>
+            <option value="60">60s</option>
+            <option value="120">2m</option>
+            <option value="300">5m</option>
+          </select>
+        )}
 
         {/* Bulk Actions */}
         {bulkSelected.size > 0 && (

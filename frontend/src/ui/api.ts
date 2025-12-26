@@ -112,7 +112,22 @@ export async function approveAllFiltered(status: string, maxTotal = 200): Promis
 
 
 export function getApiKey(): string {
-  return (localStorage.getItem('apiKey') || '').trim();
+  // For development: use default API key if none is set
+  const DEFAULT_DEV_API_KEY = 'dev_key_123';
+  
+  // Check if API key is in localStorage
+  const storedKey = localStorage.getItem('apiKey');
+  
+  // If no key stored, use development default (localhost only)
+  if (!storedKey || storedKey.trim() === '') {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalhost) {
+      console.log('🔑 Using default development API key. Set custom key via Settings if needed.');
+      return DEFAULT_DEV_API_KEY;
+    }
+  }
+  
+  return (storedKey || '').trim();
 }
 
 

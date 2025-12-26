@@ -20,7 +20,20 @@ You can change it in the UI top bar.
 
 
 ## Auth
-If API uses `ROUTING_API_KEY`, set the API key in the UI header (stored in localStorage) and it will be sent as `x-api-key`.
+The API uses `x-api-key` header authentication.
+
+**Development (localhost):**
+- ✅ **Auto-configured!** Uses `dev_key_123` by default
+- No setup needed - just open the app and it works!
+
+**Production:**
+- Set your API key via the Settings UI (top bar)
+- Click "Save" to persist
+- The key is stored in localStorage
+
+**Custom API Key (optional):**
+- Change via Settings UI if using a different backend configuration
+- Useful for testing different environments
 
 
 ## Gating

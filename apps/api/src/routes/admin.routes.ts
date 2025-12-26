@@ -3,6 +3,7 @@ import { Router } from "express";
 import { createMondayClient } from "../../../../packages/modules/monday-integration/src/application/monday.clientFactory";
 import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/application/monday.orgClient";
 import { refreshMondayUsersCache } from "../../../../packages/modules/monday-integration/src/application/monday.people";
+import { registerMondayWebhook } from "../../../../packages/modules/monday-integration/src/application/monday.webhooks";
 
 import { PrismaMondayCredentialRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayCredential.repo";
 import { PrismaMondayUserCacheRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayUserCache.repo";
@@ -20,6 +21,10 @@ import { PrismaRoutingSettingsRepo } from "../../../../packages/modules/routing-
 import { PrismaRoutingStateRepo } from "../../../../packages/modules/routing-state/src/infrastructure/routingState.repo";
 
 import { PrismaAuditRepo } from "../../../../packages/modules/audit-logging/src/infrastructure/audit.repo";
+import { loadHistoricalLeads } from "../services/historyLoader";
+import { calculateAllAgentProfiles } from "../../../../packages/modules/agent-profiling/src/application/agentProfiler";
+import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
+import { env } from "../config/env";
 
 /**
  * Phase 1 Admin routes (single-org, rule-based).
@@ -318,8 +323,50 @@ export function adminRoutes() {
       after: { endpoint: endpoint ?? "https://api.monday.com/v2" },
     });
 
+    // Phase 2: Auto-register webhooks if PUBLIC_URL is configured
+    let webhookStatus = { registered: false, message: "Webhook registration skipped - PUBLIC_URL not configured" };
+    
+    if (env.PUBLIC_URL) {
+      try {
+        console.log("[monday/connect] Registering webhook for real-time integration...");
+        
+        const client = createMondayClient({ token, endpoint });
+        const mappingConfig = await mappingRepo.getLatest(ORG_ID);
+        
+        if (mappingConfig?.primaryBoardId) {
+          const webhookUrl = `${env.PUBLIC_URL}/webhooks/monday`;
+          
+          const webhookId = await registerMondayWebhook({
+            mondayClient: client,
+            boardId: mappingConfig.primaryBoardId,
+            webhookUrl,
+            event: "create_pulse",
+            orgId: ORG_ID,
+          });
+          
+          webhookStatus = {
+            registered: true,
+            message: `Webhook registered: ${webhookId}`,
+          };
+          
+          console.log(`✅ Webhook registered successfully: ${webhookId}`);
+        } else {
+          webhookStatus = {
+            registered: false,
+            message: "Webhook registration skipped - no primary board configured in field mapping",
+          };
+        }
+      } catch (error: any) {
+        console.error("[monday/connect] Webhook registration failed (non-fatal):", error.message);
+        webhookStatus = {
+          registered: false,
+          message: `Webhook registration failed: ${error.message}`,
+        };
+      }
+    }
+
     const s = await credRepo.status(ORG_ID);
-    return res.json({ ok: true, ...s });
+    return res.json({ ok: true, ...s, webhook: webhookStatus });
   });
 
   r.post("/monday/test", async (_req, res) => {
@@ -343,6 +390,169 @@ export function adminRoutes() {
         email: u.email 
       })) 
     });
+  });
+
+  // -------------------------
+  // Historical Data & Metrics
+  // -------------------------
+  
+  /**
+   * POST /admin/load-history
+   * Load historical lead data from Monday.com boards
+   */
+  r.post("/load-history", async (req, res) => {
+    try {
+      const { limitPerBoard = 500, forceReload = false } = req.body;
+      
+      console.log("[admin/load-history] Starting historical data load...", { limitPerBoard, forceReload });
+      
+      const result = await loadHistoricalLeads({ limitPerBoard, forceReload });
+      
+      await safeAudit({
+        orgId: ORG_ID,
+        actorUserId: ACTOR_ID,
+        action: "admin.load_history",
+        entityType: "LeadFact",
+        entityId: null,
+        before: null,
+        after: result,
+      });
+      
+      return res.json(result);
+    } catch (error: any) {
+      console.error("[admin/load-history] Error:", error);
+      return res.status(500).json({
+        ok: false,
+        message: `Failed to load historical data: ${error.message}`,
+        error: error.message,
+      });
+    }
+  });
+  
+  /**
+   * POST /admin/compute-agent-profiles
+   * Compute agent profiles from historical lead data
+   */
+  r.post("/compute-agent-profiles", async (req, res) => {
+    try {
+      console.log("[admin/compute-agent-profiles] Starting profile computation...");
+      
+      // Calculate all profiles
+      const profiles = await calculateAllAgentProfiles(ORG_ID);
+      
+      // Save to database
+      const profileRepo = new PrismaAgentProfileRepo();
+      await Promise.all(
+        profiles.map(profile => profileRepo.upsert(profile))
+      );
+      
+      console.log(`[admin/compute-agent-profiles] Computed ${profiles.length} profiles`);
+      
+      await safeAudit({
+        orgId: ORG_ID,
+        actorUserId: ACTOR_ID,
+        action: "admin.compute_agent_profiles",
+        entityType: "AgentProfile",
+        entityId: null,
+        before: null,
+        after: { profilesComputed: profiles.length },
+      });
+      
+      return res.json({
+        ok: true,
+        message: `Successfully computed ${profiles.length} agent profiles`,
+        profilesComputed: profiles.length,
+        profiles: profiles.map(p => ({
+          agentUserId: p.agentUserId,
+          agentName: p.agentName,
+          conversionRate: p.conversionRate,
+          avgDealSize: p.avgDealSize,
+          availability: p.availability,
+          totalLeadsHandled: p.totalLeadsHandled,
+          totalLeadsConverted: p.totalLeadsConverted,
+        })),
+      });
+    } catch (error: any) {
+      console.error("[admin/compute-agent-profiles] Error:", error);
+      return res.status(500).json({
+        ok: false,
+        message: `Failed to compute agent profiles: ${error.message}`,
+        error: error.message,
+      });
+    }
+  });
+  
+  /**
+   * POST /admin/sync-metrics
+   * Full sync: Load history + Compute profiles (convenience endpoint)
+   */
+  r.post("/sync-metrics", async (req, res) => {
+    try {
+      const { limitPerBoard = 500 } = req.body;
+      
+      console.log("[admin/sync-metrics] Starting full metrics sync...");
+      
+      // Step 1: Load historical leads
+      console.log("[admin/sync-metrics] Step 1/2: Loading historical data...");
+      const loadResult = await loadHistoricalLeads({ limitPerBoard, forceReload: false });
+      
+      if (!loadResult.ok) {
+        return res.status(500).json({
+          ok: false,
+          message: `Failed at step 1: ${loadResult.message}`,
+          error: loadResult.errors,
+        });
+      }
+      
+      // Step 2: Compute agent profiles
+      console.log("[admin/sync-metrics] Step 2/2: Computing agent profiles...");
+      const profiles = await calculateAllAgentProfiles(ORG_ID);
+      const profileRepo = new PrismaAgentProfileRepo();
+      await Promise.all(
+        profiles.map(profile => profileRepo.upsert(profile))
+      );
+      
+      const finalResult = {
+        ok: true,
+        message: `Full sync completed: Loaded ${loadResult.itemsLoaded} leads, computed ${profiles.length} profiles`,
+        history: {
+          boards: loadResult.boards,
+          itemsLoaded: loadResult.itemsLoaded,
+          itemsUpdated: loadResult.itemsUpdated,
+          errors: loadResult.errors,
+        },
+        profiles: {
+          count: profiles.length,
+          agents: profiles.map(p => ({
+            agentUserId: p.agentUserId,
+            agentName: p.agentName,
+            conversionRate: p.conversionRate,
+            availability: p.availability,
+          })),
+        },
+      };
+      
+      await safeAudit({
+        orgId: ORG_ID,
+        actorUserId: ACTOR_ID,
+        action: "admin.sync_metrics",
+        entityType: "System",
+        entityId: null,
+        before: null,
+        after: finalResult,
+      });
+      
+      console.log("[admin/sync-metrics] Completed successfully");
+      
+      return res.json(finalResult);
+    } catch (error: any) {
+      console.error("[admin/sync-metrics] Error:", error);
+      return res.status(500).json({
+        ok: false,
+        message: `Failed to sync metrics: ${error.message}`,
+        error: error.message,
+      });
+    }
   });
 
   return r;

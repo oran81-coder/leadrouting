@@ -100,6 +100,17 @@ private async postGraphQL<T>(query: string, variables: Record<string, unknown>):
 }
 
   /**
+   * Generic query method for custom GraphQL queries
+   * @param query - GraphQL query or mutation string
+   * @param variables - Variables to pass to the query
+   * @returns Promise with the response data
+   */
+  async query<T = any>(query: string, variables: Record<string, unknown> = {}): Promise<{ data: T }> {
+    const data = await this.postGraphQL<T>(query, variables);
+    return { data };
+  }
+
+  /**
    * Fetch sample items for multiple boards.
    * Phase 1 behavior:
    * - Fetch first N items per board (best effort).

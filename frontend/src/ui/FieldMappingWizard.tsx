@@ -5,6 +5,7 @@ import {
   getMappingConfig, 
   saveMappingConfig, 
   getMappingBoards,
+  listMondayBoardColumns,
   previewMapping,
   listMondayStatusLabels,
   type FieldMappingConfig, 
@@ -170,7 +171,7 @@ export function FieldMappingWizard() {
 
   const selectedBoard = boards.find(b => b.id === primaryBoardId);
 
-  const handleBoardSelect = (boardId: string) => {
+  const handleBoardSelect = async (boardId: string) => {
     const board = boards.find(b => b.id === boardId);
     if (board) {
       setPrimaryBoardId(boardId);
@@ -178,6 +179,21 @@ export function FieldMappingWizard() {
       // Clear existing mappings when board changes
       setMappings({});
       setWritebackTargets({ assignedAgent: null });
+      
+      // Load columns for this board
+      try {
+        const columns = await listMondayBoardColumns(boardId);
+        
+        // Update the board in the boards array with its columns
+        setBoards(prevBoards => 
+          prevBoards.map(b => 
+            b.id === boardId ? { ...b, columns } : b
+          )
+        );
+      } catch (error) {
+        console.error("Failed to load board columns:", error);
+        showToast("Failed to load board columns", "error");
+      }
     }
   };
 

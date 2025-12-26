@@ -53,6 +53,10 @@ const envSchema = z.object({
   JWT_EXPIRATION: z.string().default("1h"), // Access token: 1 hour
   JWT_REFRESH_EXPIRATION: z.string().default("7d"), // Refresh token: 7 days
   BCRYPT_ROUNDS: z.string().transform(Number).pipe(z.number().int().min(10).max(15)).default("10"),
+  
+  // Webhooks (Phase 2 - Real-time Integration)
+  PUBLIC_URL: z.string().url().optional(),
+  WEBHOOK_SECRET: z.string().optional(),
 });
 
 /**

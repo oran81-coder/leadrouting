@@ -20,29 +20,101 @@ This guide will help you get started with all the new features across Manager, A
 
 ## 🏁 **Starting the Application**
 
-### **1. Start the Backend**
+### **✨ NEW: Automated Startup (Recommended!)** 
+
+**The easiest way to start everything:**
+
+```powershell
+cd C:\Users\oran8\Desktop\leadrouting\lead-routing-phase1-FULL-latest-rebuilt-FIX3-smokefix\lead-routing-skeleton-node-ts
+.\scripts\start-dev.ps1
+```
+
+**This single script will:**
+- ✅ Start ngrok tunnel
+- ✅ Update `.env` automatically
+- ✅ Start backend server
+- ✅ Start frontend
+- ✅ Register webhook
+- ✅ Open browser
+
+**That's it! Everything is ready!** 🎉
+
+---
+
+### **Manual Startup (Alternative)**
+
+If you prefer to start services manually:
+
+#### **1. Start ngrok (Terminal 1)**
+```powershell
+cd C:\Users\oran8\Desktop\leadrouting\lead-routing-phase1-FULL-latest-rebuilt-FIX3-smokefix\lead-routing-skeleton-node-ts
+npx ngrok http 3000
+```
+Copy the public URL (e.g., `https://abc123.ngrok.io`)
+
+#### **2. Update .env**
+Edit `.env` and set:
+```
+PUBLIC_URL=https://abc123.ngrok.io
+```
+
+#### **3. Start the Backend (Terminal 2)**
 ```powershell
 cd C:\Users\oran8\Desktop\leadrouting\lead-routing-phase1-FULL-latest-rebuilt-FIX3-smokefix\lead-routing-skeleton-node-ts
 npm run dev
 ```
 **Expected:** Server starts on `http://localhost:3000`
 
-### **2. Start the Frontend (New Terminal)**
+#### **4. Start the Frontend (Terminal 3)**
 ```powershell
 cd C:\Users\oran8\Desktop\leadrouting\lead-routing-phase1-FULL-latest-rebuilt-FIX3-smokefix\lead-routing-skeleton-node-ts\frontend
 npm run dev
 ```
 **Expected:** Frontend starts on `http://localhost:5173`
 
-### **3. Open in Browser**
-Navigate to: `http://localhost:5173`
+#### **5. Connect Monday.com & Register Webhook**
 
-### **4. Set API Base (First Time Only)**
-1. Click the gear icon (⚙️) in the top navigation
+**Option A - Admin UI (Recommended):**
+1. Open browser: `http://localhost:5173`
+2. Go to **Admin Screen** (Tab #3)
+3. Scroll to "Monday.com Integration"
+4. Enter your **Monday.com API Token**
+5. Click **"Connect"** → Webhook registers automatically! ✅
+
+**Option B - PowerShell (Alternative):**
+```powershell
+$token = "YOUR_MONDAY_TOKEN_HERE"
+$body = @{ token = $token } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:3000/admin/monday/connect" -Method Post -Body $body -ContentType "application/json"
+```
+
+⚠️ **Note:** Don't use `register-webhook-auto.ts` - it causes connection issues!  
+📖 See `SETUP_REAL_DATA_SIMPLE.md` for details.
+
+#### **6. Set API Base (First Time Only)**
+1. In the browser, click the gear icon (⚙️) in the top navigation
 2. Enter: `http://localhost:3000`
 3. Click Save
 
 **You're ready!** 🎉
+
+---
+
+### **🔍 Health Monitoring (Optional)**
+
+Keep ngrok healthy with automatic monitoring:
+
+```powershell
+# In a separate terminal
+.\scripts\check-ngrok-health.ps1 -Continuous -AutoRestart
+```
+
+This will:
+- Monitor ngrok every 5 minutes
+- Auto-restart if it fails
+- Update `.env` with new URL
+
+**💡 Tip:** See [`scripts/README.md`](scripts/README.md) for all script options!
 
 ---
 

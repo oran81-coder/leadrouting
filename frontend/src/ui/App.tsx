@@ -1012,7 +1012,13 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           API Key
-          <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} style={{ width: 220 }} />
+          <input 
+            value={apiKey} 
+            onChange={(e) => setApiKey(e.target.value)} 
+            style={{ width: 220 }} 
+            placeholder="dev_key_123 (auto in dev)"
+            title="Development default: dev_key_123. Change only if using custom API key."
+          />
         </label>
         <button onClick={persistConnection}>Save</button>
         {globalMsg ? <span style={{ opacity: 0.8 }}>{globalMsg}</span> : null}
