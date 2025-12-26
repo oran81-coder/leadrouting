@@ -29,6 +29,7 @@ export class PrismaRoutingProposalRepo {
     idempotencyKey: string;
     boardId: string;
     itemId: string;
+    itemName?: string | null;
     normalizedValues: unknown;
     selectedRule?: unknown;
     action?: unknown;
@@ -49,6 +50,7 @@ export class PrismaRoutingProposalRepo {
       update: {
         boardId: args.boardId,
         itemId: args.itemId,
+        itemName: args.itemName ?? null,
         normalizedValues: JSON.stringify(args.normalizedValues),
         selectedRule: args.selectedRule ? JSON.stringify(args.selectedRule) : null,
         action: args.action ? JSON.stringify(args.action) : null,
@@ -60,6 +62,7 @@ export class PrismaRoutingProposalRepo {
         idempotencyKey: args.idempotencyKey,
         boardId: args.boardId,
         itemId: args.itemId,
+        itemName: args.itemName ?? null,
         normalizedValues: JSON.stringify(args.normalizedValues),
         selectedRule: args.selectedRule ? JSON.stringify(args.selectedRule) : null,
         action: args.action ? JSON.stringify(args.action) : null,

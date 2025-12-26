@@ -94,6 +94,7 @@ model RoutingProposal {
   idempotencyKey String
   boardId        String
   itemId         String
+  itemName       String? // Name of the lead/item from Monday.com
   // enum-like: "PROPOSED" | "APPROVED" | "REJECTED" | "OVERRIDDEN" | "APPLIED"
   status         String @default("PROPOSED")
 

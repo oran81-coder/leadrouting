@@ -398,6 +398,7 @@ export function routingRoutes() {
           }
 
           const boardId = req.body.item?.boardId ?? "mock_board";
+          const itemName = req.body.item?.name ?? null; // Extract item name
           const idempotencyKey = `${boardId}_${itemId}_${(schema as any).version}_${(mapping as any).version}_${(rules as any).version}`;
 
           const proposal = await proposalRepo.create({
@@ -405,6 +406,7 @@ export function routingRoutes() {
             idempotencyKey,
             boardId,
             itemId: itemId!,
+            itemName, // Add itemName to proposal
             normalizedValues: norm.values,
             selectedRule: evalResult.selectedRule,
             action: evalResult.selectedRule?.action,

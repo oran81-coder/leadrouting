@@ -4,8 +4,11 @@ export type ManagerProposalDTO = {
   createdAt: string;
   boardId: string;
   itemId: string;
+  itemName: string | null; // Name of the lead/item from Monday.com
   suggestedAssigneeRaw: string | null;
+  suggestedAssigneeName: string | null; // Resolved name from Monday users cache
   suggestedRuleName: string | null;
+  matchScore: number | null; // Match score from explainability
   normalizedValues: unknown;
   explains: unknown;
 };

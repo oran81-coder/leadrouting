@@ -9,6 +9,12 @@ type ProposalDetailModalProps = {
 };
 
 export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: ProposalDetailModalProps) {
+  // Extract explanation from explainability
+  const explainability = proposal.explains as any;
+  const explanation = explainability?.explanation || "No explanation available";
+  const matchScore = proposal.matchScore;
+  const assigneeName = proposal.suggestedAssigneeName || proposal.suggestedAssigneeRaw || "Unknown";
+
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
@@ -19,7 +25,7 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between z-10">
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
             Routing Proposal Details
           </h3>
@@ -45,6 +51,48 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
 
         {/* Content */}
         <div className="px-6 py-4 space-y-6">
+          {/* Hero Section - Recommendation */}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border-2 border-blue-200 dark:border-blue-800">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                  <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Recommended Assignee
+                </h4>
+                <div className="text-2xl font-bold text-blue-900 dark:text-blue-100 mb-1">
+                  {assigneeName}
+                </div>
+                {proposal.suggestedRuleName && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    via rule: <span className="font-medium">{proposal.suggestedRuleName}</span>
+                  </div>
+                )}
+              </div>
+              {matchScore !== null && (
+                <div className="text-center ml-4">
+                  <div className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                    {Math.round(matchScore)}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+                    Match Score
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Explanation */}
+            <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
+              <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Reason for Decision
+              </h5>
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                {explanation}
+              </p>
+            </div>
+          </div>
+
           {/* Status Badge */}
           <div>
             <span
@@ -115,17 +163,17 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
             )}
           </div>
 
-          {/* Routing Suggestion */}
+          {/* Routing Suggestion - Additional Details */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-            <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-              Routing Suggestion
+            <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">
+              Additional Routing Details
             </h4>
             <div className="space-y-3">
               <div>
                 <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                  Suggested Assignee
+                  Agent Identifier (Raw)
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900 dark:text-white">
+                <dd className="mt-1 text-sm text-gray-900 dark:text-white font-mono">
                   {proposal.suggestedAssigneeRaw || "—"}
                 </dd>
               </div>

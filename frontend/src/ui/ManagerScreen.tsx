@@ -251,7 +251,9 @@ export function ManagerScreen() {
     return (
       p.itemId.toLowerCase().includes(search) ||
       p.boardId.toLowerCase().includes(search) ||
+      (p.itemName && p.itemName.toLowerCase().includes(search)) ||
       (p.suggestedAssigneeRaw && p.suggestedAssigneeRaw.toLowerCase().includes(search)) ||
+      (p.suggestedAssigneeName && p.suggestedAssigneeName.toLowerCase().includes(search)) ||
       (p.suggestedRuleName && p.suggestedRuleName.toLowerCase().includes(search))
     );
   });
@@ -579,13 +581,18 @@ export function ManagerScreen() {
                     <td className="px-4 py-3">
                       <button
                         onClick={() => setSelectedProposal(proposal)}
-                        className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                        className="text-sm text-blue-600 dark:text-blue-400 hover:underline text-left"
                       >
-                        {proposal.boardId}:{proposal.itemId}
+                        <div className="font-medium">
+                          {proposal.itemName || `Item ${proposal.itemId}`}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {proposal.boardId}:{proposal.itemId}
+                        </div>
                       </button>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {proposal.suggestedAssigneeRaw || "—"}
+                      {proposal.suggestedAssigneeName || proposal.suggestedAssigneeRaw || "—"}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                       {proposal.suggestedRuleName || "—"}

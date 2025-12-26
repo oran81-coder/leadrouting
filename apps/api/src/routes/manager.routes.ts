@@ -45,9 +45,14 @@ export function managerRoutes() {
     itemId,
   });
 
+  // Convert all proposals to DTOs with name resolution
+  const items = await Promise.all(
+    result.items.map(p => toManagerProposalDTO(p, ORG_ID))
+  );
+
   return res.json({
     ok: true,
-    items: result.items.map(toManagerProposalDTO),
+    items,
     nextCursor: result.nextCursor,
   });
 });
@@ -70,7 +75,7 @@ export function managerRoutes() {
       
       return res.json({
         ok: true,
-        proposal: toManagerProposalDTO(proposal),
+        proposal: await toManagerProposalDTO(proposal, ORG_ID),
       });
     } catch (error: any) {
       console.error("[manager/proposals/:id] Error:", error);
