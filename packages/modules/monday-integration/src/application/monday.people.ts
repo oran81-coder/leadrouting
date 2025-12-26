@@ -30,10 +30,16 @@ async function getUsersInMemoryOrDb(client: any, orgId: string): Promise<UserLit
 
 /**
  * Force refresh of Monday users cache from API.
+ * Clears existing cache and replaces with fresh data from Monday.
  */
 export async function refreshMondayUsersCache(client: any, orgId: string): Promise<number> {
   const users = await client.fetchUsers();
   const repo = new PrismaMondayUserCacheRepo();
+  
+  // Clear old cache to remove any stale/fake users
+  await repo.deleteAll(orgId);
+  
+  // Insert fresh data from Monday
   await repo.upsertMany(orgId, users);
   inMemory = { at: Date.now(), users };
   return users.length;

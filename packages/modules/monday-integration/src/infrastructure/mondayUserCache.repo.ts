@@ -96,4 +96,10 @@ export class PrismaMondayUserCacheRepo {
       updatedAt: r.updatedAt.toISOString(),
     }));
   }
+
+  async deleteAll(orgId: string): Promise<number> {
+    const prisma = getPrisma();
+    const result = await prisma.mondayUserCache.deleteMany({ where: { orgId } });
+    return result.count;
+  }
 }
