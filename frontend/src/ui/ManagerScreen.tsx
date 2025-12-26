@@ -259,7 +259,7 @@ export function ManagerScreen() {
   });
 
   // Calculate KPIs
-  const pendingCount = proposals.filter((p) => p.status === "PENDING").length;
+  const pendingCount = proposals.filter((p) => p.status === "PENDING" || p.status === "PROPOSED").length;
   const approvedCount = proposals.filter((p) => p.status === "APPROVED").length;
   const rejectedCount = proposals.filter((p) => p.status === "REJECTED").length;
   const totalCount = proposals.length;
