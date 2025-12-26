@@ -37,24 +37,25 @@ export function outcomesRoutes() {
       const cfg = await cfgRepo.getOrCreateDefaults();
       const hasDealAmountMapping = !!(cfg.dealAmountColumnId && String(cfg.dealAmountColumnId).trim().length > 0);
 
-      // Fetch all closed/won leads in the window
-      const closedWonLeads = await factRepo.listClosedWonSince(since);
-
+      // Fetch ALL leads that entered in the window (assigned)
+      const allLeads = await factRepo.listSince(since);
+      
       // Filter by boardId if provided
       const filteredLeads = boardId
-        ? closedWonLeads.filter((lead) => lead.boardId === boardId)
-        : closedWonLeads;
+        ? allLeads.filter((lead) => lead.boardId === boardId)
+        : allLeads;
 
       // Calculate overall KPIs
-      const assigned = filteredLeads.length; // All closed/won leads are counted as assigned
-      const closedWon = filteredLeads.length; // All are closed/won by definition
+      const assigned = filteredLeads.filter((lead) => lead.assignedUserId).length; // All leads with assigned user
+      const closedWonLeads = filteredLeads.filter((lead) => lead.closedWonAt && lead.assignedUserId); // Closed won leads
+      const closedWon = closedWonLeads.length;
       const conversionRate = assigned > 0 ? closedWon / assigned : 0;
 
       // Calculate revenue and avgDeal if dealAmount mapping exists
       let revenue: number | null = null;
       let avgDeal: number | null = null;
       if (hasDealAmountMapping) {
-        const dealAmounts = filteredLeads
+        const dealAmounts = closedWonLeads
           .map((lead) => Number(lead.dealAmount ?? 0))
           .filter((n) => Number.isFinite(n) && n > 0);
         if (dealAmounts.length > 0) {
@@ -64,10 +65,10 @@ export function outcomesRoutes() {
       }
 
       // Calculate median time to close
-      const closeTimes = filteredLeads
+      const closeTimes = closedWonLeads
         .map((lead: any) => {
-          if (!lead.closedAt || !lead.enteredAt) return null;
-          const diff = lead.closedAt.getTime() - lead.enteredAt.getTime();
+          if (!lead.closedWonAt || !lead.enteredAt) return null;
+          const diff = lead.closedWonAt.getTime() - lead.enteredAt.getTime();
           return diff / (1000 * 60 * 60 * 24); // days
         })
         .filter((d): d is number => d !== null && Number.isFinite(d) && d >= 0);
@@ -90,27 +91,33 @@ export function outcomesRoutes() {
         closeTimes: number[];
       }>();
 
+      // Count all assigned leads per agent
       for (const lead of filteredLeads) {
-        const agentId = lead.assignedUserId || "unknown";
+        if (!lead.assignedUserId) continue;
+        const agentId = lead.assignedUserId;
         if (!agentMap.has(agentId)) {
           agentMap.set(agentId, { assigned: 0, closedWon: 0, revenue: 0, closeTimes: [] });
         }
         const agentData = agentMap.get(agentId)!;
         agentData.assigned++;
-        agentData.closedWon++;
         
-        if (hasDealAmountMapping && lead.dealAmount) {
-          const dealAmt = Number(lead.dealAmount);
-          if (Number.isFinite(dealAmt) && dealAmt > 0) {
-            agentData.revenue += dealAmt;
+        // Only count closed won and revenue for closed deals
+        if (lead.closedWonAt) {
+          agentData.closedWon++;
+          
+          if (hasDealAmountMapping && lead.dealAmount) {
+            const dealAmt = Number(lead.dealAmount);
+            if (Number.isFinite(dealAmt) && dealAmt > 0) {
+              agentData.revenue += dealAmt;
+            }
           }
-        }
 
-        if ((lead as any).closedAt && (lead as any).enteredAt) {
-          const diff = (lead as any).closedAt.getTime() - (lead as any).enteredAt.getTime();
-          const days = diff / (1000 * 60 * 60 * 24);
-          if (Number.isFinite(days) && days >= 0) {
-            agentData.closeTimes.push(days);
+          if ((lead as any).closedWonAt && (lead as any).enteredAt) {
+            const diff = (lead as any).closedWonAt.getTime() - (lead as any).enteredAt.getTime();
+            const days = diff / (1000 * 60 * 60 * 24);
+            if (Number.isFinite(days) && days >= 0) {
+              agentData.closeTimes.push(days);
+            }
           }
         }
       }

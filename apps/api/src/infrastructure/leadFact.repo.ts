@@ -43,6 +43,16 @@ export class PrismaLeadFactRepo {
     });
   }
 
+  async listSince(since: Date) {
+    const prisma = getPrisma();
+    return prisma.leadFact.findMany({
+      where: {
+        orgId: ORG_ID,
+        enteredAt: { gte: since },
+      },
+    });
+  }
+
   async listAgentsWithFacts() {
     const prisma = getPrisma();
     const rows = await prisma.leadFact.findMany({
