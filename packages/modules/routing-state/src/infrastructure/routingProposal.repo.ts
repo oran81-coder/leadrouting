@@ -8,6 +8,7 @@ export interface RoutingProposal {
   orgId: string;
   boardId: string;
   itemId: string;
+  itemName?: string | null;
   status: ProposalStatus;
   normalizedValues: unknown;
   selectedRule?: unknown;
@@ -162,6 +163,7 @@ export class PrismaRoutingProposalRepo {
       orgId: row.orgId,
       boardId: row.boardId,
       itemId: row.itemId,
+      itemName: row.itemName ?? null,
       status: row.status,
       normalizedValues: row.normalizedValues ? JSON.parse(row.normalizedValues) : null,
       selectedRule: row.selectedRule ? JSON.parse(row.selectedRule) : undefined,

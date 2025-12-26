@@ -65,7 +65,7 @@ export async function toManagerProposalDTO(p: RoutingProposal, orgId: string): P
     createdAt: p.createdAt,
     boardId: p.boardId,
     itemId: p.itemId,
-    itemName: (p as any).itemName ?? null,
+    itemName: p.itemName ?? null,
     suggestedAssigneeRaw,
     suggestedAssigneeName,
     suggestedRuleName: rule?.name ? String(rule.name) : null,
