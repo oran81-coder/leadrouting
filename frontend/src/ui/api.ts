@@ -610,3 +610,154 @@ export async function listMondayUsers(): Promise<{
   }>(`/admin/monday/users`);
 }
 
+// ============================================
+// Phase 7.3: Organization Management
+// ============================================
+
+export type Organization = {
+  id: string;
+  name: string;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  isActive: boolean;
+  tier: string;
+  mondayWorkspaceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+};
+
+export type OrganizationWithStats = {
+  organization: Organization;
+  stats: {
+    totalUsers: number;
+    totalProposals: number;
+    totalLeads: number;
+    totalAgents: number;
+  };
+};
+
+export type CreateOrganizationInput = {
+  name: string;
+  displayName?: string;
+  email?: string;
+  phone?: string;
+  tier?: string;
+  mondayWorkspaceId?: string;
+  settings?: Record<string, any>;
+};
+
+export type UpdateOrganizationInput = {
+  displayName?: string;
+  email?: string;
+  phone?: string;
+  isActive?: boolean;
+  tier?: string;
+  mondayWorkspaceId?: string;
+  settings?: Record<string, any>;
+};
+
+/**
+ * List all organizations
+ */
+export async function listOrganizations(filters?: {
+  isActive?: boolean;
+  tier?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  ok: boolean;
+  data: Organization[];
+  pagination: { total: number; limit: number; offset: number };
+}> {
+  const params = new URLSearchParams();
+  if (filters?.isActive !== undefined) params.append("isActive", String(filters.isActive));
+  if (filters?.tier) params.append("tier", filters.tier);
+  if (filters?.limit) params.append("limit", String(filters.limit));
+  if (filters?.offset) params.append("offset", String(filters.offset));
+
+  const query = params.toString();
+  return await http<{
+    ok: boolean;
+    data: Organization[];
+    pagination: { total: number; limit: number; offset: number };
+  }>(`/organizations${query ? `?${query}` : ""}`);
+}
+
+/**
+ * Get organization by ID
+ */
+export async function getOrganization(orgId: string): Promise<{
+  ok: boolean;
+  data: Organization;
+}> {
+  return await http<{ ok: boolean; data: Organization }>(`/organizations/${orgId}`);
+}
+
+/**
+ * Get organization with statistics
+ */
+export async function getOrganizationWithStats(orgId: string): Promise<{
+  ok: boolean;
+  data: OrganizationWithStats;
+}> {
+  return await http<{ ok: boolean; data: OrganizationWithStats }>(`/organizations/${orgId}/stats`);
+}
+
+/**
+ * Create new organization
+ */
+export async function createOrganization(input: CreateOrganizationInput): Promise<{
+  ok: boolean;
+  data: Organization;
+}> {
+  return await http<{ ok: boolean; data: Organization }>(`/organizations`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Update organization
+ */
+export async function updateOrganization(
+  orgId: string,
+  input: UpdateOrganizationInput
+): Promise<{
+  ok: boolean;
+  data: Organization;
+}> {
+  return await http<{ ok: boolean; data: Organization }>(`/organizations/${orgId}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Delete organization (soft delete by default)
+ */
+export async function deleteOrganization(orgId: string, hard = false): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  return await http<{ ok: boolean; message: string }>(
+    `/organizations/${orgId}${hard ? "?hard=true" : ""}`,
+    { method: "DELETE" }
+  );
+}
+
+/**
+ * Activate organization
+ */
+export async function activateOrganization(orgId: string): Promise<{
+  ok: boolean;
+  data: Organization;
+  message: string;
+}> {
+  return await http<{ ok: boolean; data: Organization; message: string }>(
+    `/organizations/${orgId}/activate`,
+    { method: "POST" }
+  );
+}
+
