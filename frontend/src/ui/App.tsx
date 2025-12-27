@@ -31,6 +31,8 @@ const ManagerScreen = lazy(() => import("./ManagerScreen").then(m => ({ default:
 const AdminScreen = lazy(() => import("./AdminScreen").then(m => ({ default: m.AdminScreen })));
 const FieldMappingWizard = lazy(() => import("./FieldMappingWizard").then(m => ({ default: m.FieldMappingWizard })));
 const PerformanceDashboard = lazy(() => import("./PerformanceDashboard").then(m => ({ default: m.PerformanceDashboard })));
+const SuperAdminDashboard = lazy(() => import("./SuperAdminDashboard").then(m => ({ default: m.SuperAdminDashboard })));
+const OrgRegistrationPage = lazy(() => import("./OrgRegistrationPage").then(m => ({ default: m.OrgRegistrationPage })));
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -729,7 +731,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
 }
 
 export default function App() {
-  const [view, setView] = useState<"manager" | "admin" | "outcomes" | "mapping" | "performance">("admin");
+  const [view, setView] = useState<"manager" | "admin" | "outcomes" | "mapping" | "performance" | "super-admin" | "register">("admin");
 
   // global connection settings
   const [apiBase, setApiBase] = useState(getApiBase());
@@ -779,6 +781,8 @@ export default function App() {
     "3": () => setView("outcomes"),
     "4": () => setView("mapping"),
     "5": () => setView("performance"),
+    "6": () => setView("super-admin"),
+    "7": () => setView("register"),
     "r": () => {
       if (view === "manager") refreshManager(true);
       else if (view === "admin") refreshAdmin();
@@ -1002,6 +1006,26 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         >
           📊 Performance
         </button>
+        <button 
+          onClick={() => setView("super-admin")} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            view === "super-admin" 
+              ? "bg-blue-600 text-white" 
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+          }`}
+        >
+          👑 Super Admin
+        </button>
+        <button 
+          onClick={() => setView("register")} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            view === "register" 
+              ? "bg-blue-600 text-white" 
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+          }`}
+        >
+          📝 Register Org
+        </button>
 
         <ThemeToggleButton />
 
@@ -1033,6 +1057,8 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         {view === "admin" && <AdminScreen />}
         {view === "mapping" && <FieldMappingWizard />}
         {view === "performance" && <PerformanceDashboard />}
+        {view === "super-admin" && <SuperAdminDashboard />}
+        {view === "register" && <OrgRegistrationPage />}
       </Suspense>
 
       {/* OLD ADMIN CODE - TO BE REMOVED
