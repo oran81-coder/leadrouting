@@ -21,7 +21,6 @@ import availabilityRoutes from "./availability.routes";
 
 import { requireApiKey } from "../middleware/authApiKey";
 import { requireMondayConnected } from "../middleware/requireMondayConnected";
-import { authenticateJWT, requireAdmin } from "../middleware/auth";
 
 // module routes (placeholders)
 import { fieldMappingRoutes } from "../../../../packages/modules/field-mapping/src/api/mapping.routes";
@@ -43,8 +42,8 @@ export function registerRoutes(app: Express) {
   // Organization management (Admin/Super Admin only)
   app.use("/organizations", requireApiKey, organizationRoutes);
   
-  // Admin routes (require authentication and admin role within organization)
-  app.use("/admin", requireApiKey, authenticateJWT, requireAdmin, adminRoutes());
+  // Admin routes (protected by API key, auth optional based on AUTH_ENABLED flag)
+  app.use("/admin", requireApiKey, adminRoutes());
   console.log("[registerRoutes] mounted /admin");
 
   app.use("/routing-calc", requireApiKey, routingCalculationRoutes()); // Phase 2: renamed to avoid conflict

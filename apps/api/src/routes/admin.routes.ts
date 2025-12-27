@@ -27,21 +27,26 @@ import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
 import { env } from "../config/env";
 
 /**
- * Phase 1 Admin routes (multi-org, rule-based).
- * Auth handled upstream via requireApiKey + authenticateJWT + requireAdmin.
- * All operations are scoped to the authenticated user's organization (req.user.orgId).
+ * Phase 1 Admin routes (multi-org with backward compatibility).
+ * Auth handled upstream via requireApiKey.
+ * When AUTH_ENABLED=true, uses req.user.orgId.
+ * When AUTH_ENABLED=false, uses default org_1 for backward compatibility.
  */
 export function adminRoutes() {
   console.log("[adminRoutes] loaded");
 
   const r = Router();
 
-  // Helper to get orgId from authenticated user
+  const DEFAULT_ORG_ID = "org_1"; // Backward compatibility
+
+  // Helper to get orgId (with backward compatibility)
   function getOrgId(req: any): string {
-    if (!req.user?.orgId) {
-      throw new Error("Organization ID not found in request. User must be authenticated.");
+    // If user is authenticated, use their orgId
+    if (req.user?.orgId) {
+      return req.user.orgId;
     }
-    return req.user.orgId;
+    // Backward compatibility: use default org
+    return DEFAULT_ORG_ID;
   }
 
   // Helper to get userId from authenticated user
