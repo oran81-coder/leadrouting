@@ -1,4 +1,5 @@
 import { getPrisma } from "../packages/core/src/db/prisma";
+import bcrypt from "bcryptjs";
 
 const ORG_ID = "org_1";
 
@@ -6,6 +7,95 @@ async function seedDemoData() {
   const prisma = getPrisma();
 
   console.log("🌱 Starting demo data seed...");
+
+  // 0. Create default organization if it doesn't exist
+  console.log("🏢 Creating default organization...");
+  const org = await prisma.organization.upsert({
+    where: { name: "org_1" },
+    update: {},
+    create: {
+      id: ORG_ID,
+      name: "org_1",
+      displayName: "Default Organization",
+      email: "admin@example.com",
+      isActive: true,
+      tier: "standard",
+    },
+  });
+  console.log(`✅ Organization created: ${org.name}`);
+
+  // 0.1. Create super admin user (no orgId)
+  console.log("👑 Creating super admin user...");
+  const superAdminPassword = await bcrypt.hash("SuperAdmin123!", 10);
+  await prisma.user.upsert({
+    where: { email: "superadmin@example.com" },
+    update: {},
+    create: {
+      email: "superadmin@example.com",
+      username: "superadmin",
+      passwordHash: superAdminPassword,
+      role: "super_admin",
+      firstName: "Super",
+      lastName: "Admin",
+      isActive: true,
+      orgId: null, // Super admin has no organization
+    },
+  });
+  console.log("✅ Super admin created (email: superadmin@example.com, password: SuperAdmin123!)");
+
+  // 0.2. Create org admin user
+  console.log("👤 Creating org admin user...");
+  const adminPassword = await bcrypt.hash("Password123!", 10);
+  await prisma.user.upsert({
+    where: { email: "admin@example.com" },
+    update: {},
+    create: {
+      email: "admin@example.com",
+      username: "admin",
+      passwordHash: adminPassword,
+      role: "admin",
+      firstName: "Admin",
+      lastName: "User",
+      isActive: true,
+      orgId: ORG_ID,
+    },
+  });
+  console.log("✅ Org admin created (email: admin@example.com, password: Password123!)");
+
+  // 0.3. Create manager and agent users
+  console.log("👥 Creating manager and agent users...");
+  const managerPassword = await bcrypt.hash("Password123!", 10);
+  await prisma.user.upsert({
+    where: { email: "manager@example.com" },
+    update: {},
+    create: {
+      email: "manager@example.com",
+      username: "manager",
+      passwordHash: managerPassword,
+      role: "manager",
+      firstName: "Manager",
+      lastName: "User",
+      isActive: true,
+      orgId: ORG_ID,
+    },
+  });
+
+  const agentPassword = await bcrypt.hash("Password123!", 10);
+  await prisma.user.upsert({
+    where: { email: "agent@example.com" },
+    update: {},
+    create: {
+      email: "agent@example.com",
+      username: "agent",
+      passwordHash: agentPassword,
+      role: "agent",
+      firstName: "Agent",
+      lastName: "User",
+      isActive: true,
+      orgId: ORG_ID,
+    },
+  });
+  console.log("✅ Manager and agent users created");
 
   // 1. Add users to cache
   const users = [
