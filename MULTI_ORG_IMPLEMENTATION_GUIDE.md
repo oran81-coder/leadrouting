@@ -2,48 +2,94 @@
 
 **Phase:** 7.3  
 **Date:** December 27, 2025  
-**Status:** ✅ Phase 1 Complete - Core Infrastructure Ready  
+**Status:** ✅ Complete - Three-Tier Architecture Implemented  
 **Branch:** `feature/multi-org-support`
 
 ---
 
 ## 📋 Executive Summary
 
-The Lead Routing System has been successfully enhanced with **multi-tenant architecture**, enabling the platform to support multiple organizations with complete data isolation, security, and scalability.
+The Lead Routing System has been successfully enhanced with a **three-tier multi-tenant architecture**, enabling:
+1. **Public Organization Registration** via Monday.com OAuth
+2. **Super Admin Dashboard** for system-wide management
+3. **Organization Admin Dashboard** for per-org management
 
 ### ✅ What's Been Completed
 
-1. **Database Schema** - Organization table with foreign key relationships
-2. **Data Migration** - Existing data migrated to default organization
-3. **Organization Repository** - Full CRUD operations
-4. **JWT Integration** - orgId included in authentication tokens
-5. **Middleware** - Automatic orgId extraction from requests
-6. **API Endpoints** - Complete organization management API
-7. **Data Isolation** - All tables now support multi-tenant filtering
+#### Backend Infrastructure
+1. **Database Schema** - Added `super_admin` role and nullable `orgId` for super admins
+2. **Monday.com OAuth** - Complete OAuth flow for organization registration
+3. **Organization Repository** - Full CRUD operations with statistics
+4. **Super Admin API** - System-wide management endpoints
+5. **Authentication** - JWT with role-based access control
+6. **Middleware** - Dynamic `orgId` extraction and super admin support
+7. **Data Isolation** - All operations scoped to authenticated user's org
+
+#### Frontend Components
+1. **OrgRegistrationPage** - Public signup via Monday.com
+2. **SuperAdminDashboard** - System stats and org management
+3. **OrganizationManager** - Org CRUD UI (moved to super admin)
+4. **API Client** - OAuth and super admin endpoints
+5. **Role-Based UI** - Different views for different user roles
+
+#### Developer Experience
+1. **Seed Script** - Creates super admin, org admin, manager, and agent users
+2. **Documentation** - Complete implementation guide
+3. **Type Safety** - Full TypeScript support
 
 ---
 
 ## 🏗️ Architecture Overview
 
+### Three-Tier User Model
+
+```mermaid
+graph TD
+    Public[Public Users] -->|Monday OAuth| Registration[Organization Registration]
+    Registration -->|Creates| OrgAdmin[Organization Admin]
+    
+    SuperAdmin[Super Admin] -->|Manages All| AllOrgs[All Organizations]
+    SuperAdmin -->|Views| SystemStats[System Statistics]
+    
+    OrgAdmin -->|Manages| OwnOrg[Own Organization Only]
+    OrgAdmin -->|Cannot See| OtherOrgs[Other Organizations]
+    
+    subgraph Roles
+        SA[super_admin<br/>No orgId]
+        A[admin<br/>Has orgId]
+        M[manager<br/>Has orgId]
+        AG[agent<br/>Has orgId]
+    end
+```
+
 ### Database Structure
 
 ```
-Organization (NEW)
+Organization
     ├── id (Primary Key)
     ├── name (Unique)
     ├── displayName
     ├── email, phone
     ├── tier (free/standard/enterprise)
-    ├── mondayWorkspaceId
+    ├── mondayWorkspaceId (from OAuth)
     ├── stripeCustomerId (future billing)
     └── settings (JSON)
 
-All Existing Tables
+User
+    ├── id (Primary Key)
+    ├── orgId (NULLABLE - null for super_admin)
+    ├── email (UNIQUE GLOBALLY)
+    ├── username
+    ├── passwordHash
+    ├── role (super_admin | admin | manager | agent)
+    └── Foreign Key → Organization.id (CASCADE)
+
+All Other Tables
     ├── orgId (Foreign Key → Organization.id)
     └── CASCADE delete (when org deleted, all data deleted)
 ```
 
-### Key Components
+### Request Flow
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -54,23 +100,32 @@ All Existing Tables
               │
               ▼
 ┌─────────────────────────────────────────────┐
-│  orgContextMiddleware                       │
-│  - Extract orgId from JWT or API key       │
-│  - Add req.orgId to request                │
+│  Authentication Middleware                  │
+│  - Verify JWT                               │
+│  - Extract user info (id, role, orgId)     │
+└─────────────┬───────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────┐
+│  Authorization Check                        │
+│  - super_admin: no orgId required           │
+│  - admin/manager/agent: require orgId       │
 └─────────────┬───────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────────┐
 │  API Routes                                 │
-│  - All routes now receive req.orgId         │
-│  - Repositories filter by orgId            │
+│  - /auth/register-org/* (Public)            │
+│  - /super-admin/* (Super Admin only)        │
+│  - /admin/* (Organization Admin)            │
+│  - /manager/* (Organization Manager)        │
 └─────────────┬───────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────────┐
 │  Database (SQLite)                          │
 │  - Row-level filtering by orgId            │
-│  - Foreign keys enforce referential integrity│
+│  - Foreign keys enforce data isolation     │
 └─────────────────────────────────────────────┘
 ```
 
@@ -78,7 +133,116 @@ All Existing Tables
 
 ## 🔧 Technical Implementation
 
-### 1. Prisma Schema Changes
+### 1. User Roles and Access Control
+
+**Role Hierarchy:**
+
+| Role | orgId | Access Level | Description |
+|------|-------|--------------|-------------|
+| `super_admin` | `null` | System-wide | Can manage all organizations, view system stats, create/delete orgs |
+| `admin` | Required | Organization | Can manage own organization settings, users, rules, etc. |
+| `manager` | Required | Organization | Can approve/reject proposals, view reports |
+| `agent` | Required | Organization | Can view assigned leads, update status |
+
+**Test Credentials (after running seed script):**
+
+```bash
+# Super Admin (no organization)
+Email: superadmin@example.com
+Password: SuperAdmin123!
+
+# Organization Admin (org_1)
+Email: admin@example.com
+Password: Password123!
+
+# Manager (org_1)
+Email: manager@example.com
+Password: Password123!
+
+# Agent (org_1)
+Email: agent@example.com
+Password: Password123!
+```
+
+### 2. Monday.com OAuth Flow
+
+**Configuration:**
+
+Add to `.env`:
+```bash
+MONDAY_OAUTH_CLIENT_ID=your_monday_client_id
+MONDAY_OAUTH_CLIENT_SECRET=your_monday_client_secret
+MONDAY_OAUTH_REDIRECT_URI=http://localhost:5173/register/callback
+```
+
+**Registration Flow:**
+
+1. User visits `/register` page
+2. Clicks "Sign up with Monday.com"
+3. Frontend calls `GET /auth/register-org/monday`
+4. Backend generates Monday OAuth URL
+5. User is redirected to Monday.com
+6. User authorizes the app
+7. Monday redirects back with authorization `code`
+8. Frontend calls `POST /auth/register-org/monday/callback` with code
+9. Backend:
+   - Exchanges code for access token
+   - Fetches user and workspace info from Monday API
+   - Creates Organization record (auto-active)
+   - Creates first user as `admin` role
+   - Stores Monday credentials encrypted
+   - Returns JWT tokens
+10. User is automatically logged in and redirected to `/admin`
+
+**API Endpoints:**
+
+```typescript
+// Get OAuth URL
+GET /auth/register-org/monday
+Response: { authUrl: string, state: string }
+
+// Complete registration
+POST /auth/register-org/monday/callback
+Body: { code: string, state?: string }
+Response: {
+  organization: { id, name, displayName, email },
+  user: { id, email, username, role, orgId },
+  tokens: { accessToken, refreshToken, expiresIn }
+}
+
+// Check OAuth config
+GET /auth/register-org/status
+Response: { mondayOAuthConfigured: boolean }
+```
+
+### 3. Prisma Schema Changes
+
+**User Model Updates:**
+
+```prisma
+model User {
+  id           String   @id @default(cuid())
+  orgId        String?  // Nullable for super_admin
+  username     String
+  email        String   @unique // Global unique for super_admin
+  passwordHash String
+  // role: 'super_admin' | 'admin' | 'manager' | 'agent'
+  role         String   @default("agent")
+  firstName    String?
+  lastName     String?
+  isActive     Boolean  @default(true)
+  
+  // Relations
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sessions     Session[]
+  
+  @@unique([orgId, username])
+  @@unique([orgId, email])
+  @@index([role]) // For super_admin queries
+}
+```
+
+### 4. Prisma Schema Changes
 
 **New Model: Organization**
 
