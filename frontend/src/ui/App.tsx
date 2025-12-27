@@ -23,6 +23,7 @@ import {
 import { ThemeProvider, useTheme } from "./ThemeContext";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { CardSkeleton } from "./CardSkeleton";
+import ErrorBoundary from "./ErrorBoundary";
 
 // ✨ Lazy load heavy screen components for better initial load time
 const OutcomesScreen = lazy(() => import("./OutcomesScreen").then(m => ({ default: m.OutcomesScreen })));
@@ -1431,3 +1432,14 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
     </div>
   );
 }
+
+// Wrap App with ErrorBoundary for production safety
+function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
+
+export { AppWithErrorBoundary };

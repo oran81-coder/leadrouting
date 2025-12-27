@@ -20,6 +20,10 @@ import { validateSchemaAndMapping } from "../../../../packages/core/src/schema/b
 import { normalizeEntityRecord } from "../../../../packages/core/src/schema/normalization";
 import { evaluateRuleSet } from "../../../../packages/modules/rule-engine/src/application/rules.evaluate";
 
+// Advanced Routing Service (combines Scoring Engine + Explainability)
+import { executeAdvancedRouting, formatExplainabilityForStorage } from "../services/advancedRoutingService";
+import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
+
 import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/application/monday.orgClient";
 import { applyAssignmentToMonday, setRoutingMetaOnMonday } from "../../../../packages/modules/monday-integration/src/application/monday.writeback";
 import { resolveMondayPersonId } from "../../../../packages/modules/monday-integration/src/application/monday.people";
@@ -44,6 +48,8 @@ export function routingRoutes() {
   const proposalRepo = new PrismaRoutingProposalRepo();
   const applyRepo = new PrismaRoutingApplyRepo();
   const auditRepo = new PrismaAuditRepo();
+  const agentProfileRepo = new PrismaAgentProfileRepo();
+  const metricsConfigRepo = new PrismaMetricsConfigRepo();
 
   const ORG_ID = "org_1"; // TODO auth/JWT
 
@@ -382,7 +388,21 @@ export function routingRoutes() {
         });
       }
 
-      const evalResult = evaluateRuleSet(norm.values as any, rules as any);
+      // Phase 1.5: Advanced Routing - Use Scoring Engine + Explainability
+      // Load agent profiles and metrics config
+      const agentProfiles = await agentProfileRepo.listByOrg(ORG_ID);
+      const metricsConfig = await metricsConfigRepo.getOrCreateDefaults();
+      
+      // Execute advanced routing (will use Scoring Engine if profiles available, else fallback)
+      const evalResult = await executeAdvancedRouting(
+        ORG_ID,
+        norm.values,
+        itemId,
+        req.body.item?.name ?? null,
+        agentProfiles,
+        metricsConfig,
+        rules
+      );
 
       // Phase 1.4: Check routing mode and branch accordingly
       if (routingState?.isEnabled) {
@@ -410,7 +430,7 @@ export function routingRoutes() {
             normalizedValues: norm.values,
             selectedRule: evalResult.selectedRule,
             action: evalResult.selectedRule?.action,
-            explainability: evalResult.explains,
+            explainability: formatExplainabilityForStorage(evalResult.explanation) || evalResult.explains,
           });
 
           await safeAudit({
@@ -753,5 +773,68 @@ r.post("/preview", async (req, res) => {
 
   return res.json({ ok: true, limit, results: result });
 });
+
+  /**
+   * GET /routing/settings/mode
+   * Get current routing mode (MANUAL_APPROVAL or AUTO)
+   */
+  r.get("/settings/mode", async (req, res) => {
+    try {
+      const settings = await settingsRepo.get(ORG_ID);
+      return res.json({
+        ok: true,
+        mode: settings.mode,
+      });
+    } catch (error: any) {
+      console.error("[routing/settings/mode] Error:", error);
+      return res.status(500).json({
+        ok: false,
+        error: "Failed to get routing mode",
+        message: error.message,
+      });
+    }
+  });
+
+  /**
+   * POST /routing/settings/mode
+   * Set routing mode (MANUAL_APPROVAL or AUTO)
+   */
+  r.post("/settings/mode", async (req, res) => {
+    try {
+      const { mode } = req.body;
+      
+      if (!mode || (mode !== "MANUAL_APPROVAL" && mode !== "AUTO")) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid mode. Must be 'MANUAL_APPROVAL' or 'AUTO'",
+        });
+      }
+      
+      await settingsRepo.setMode(ORG_ID, mode);
+      
+      await safeAudit({
+        orgId: ORG_ID,
+        actorUserId: "admin", // TODO: Get from JWT
+        action: "routing.settings.mode_changed",
+        entityType: "RoutingSettings",
+        entityId: ORG_ID,
+        before: null,
+        after: { mode },
+      });
+      
+      return res.json({
+        ok: true,
+        mode,
+      });
+    } catch (error: any) {
+      console.error("[routing/settings/mode] Error:", error);
+      return res.status(500).json({
+        ok: false,
+        error: "Failed to set routing mode",
+        message: error.message,
+      });
+    }
+  });
+
   return r;
 }

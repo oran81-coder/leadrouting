@@ -5,11 +5,15 @@ import {
   adminMondayTest,
   getKPIWeights,
   saveKPIWeights,
+  getRoutingMode,
+  setRoutingMode as apiSetRoutingMode,
   type KPIWeights,
   type KPISettings,
+  type RoutingMode,
 } from "./api";
 import { useToast } from "./hooks/useToast";
 import { InfoTooltip } from "./components/InfoTooltip";
+import { AgentAvailabilityManager } from "./AgentAvailabilityManager";
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -33,9 +37,15 @@ export function AdminScreen() {
   const [kpiSaving, setKpiSaving] = useState(false);
   const [kpiMsg, setKpiMsg] = useState<string | null>(null);
 
+  // Routing Mode state
+  const [routingMode, setRoutingMode] = useState<"MANUAL_APPROVAL" | "AUTO">("MANUAL_APPROVAL");
+  const [routingModeSaving, setRoutingModeSaving] = useState(false);
+  const [routingModeMsg, setRoutingModeMsg] = useState<string | null>(null);
+
   useEffect(() => {
     loadMondayStatus();
     loadKPIWeights();
+    loadRoutingMode();
   }, []);
 
   async function loadMondayStatus() {
@@ -55,6 +65,15 @@ export function AdminScreen() {
     } catch (e: any) {
       console.error("Error loading KPI weights:", e);
       showToast("Error loading KPI weights: " + (e?.message || String(e)), "error");
+    }
+  }
+
+  async function loadRoutingMode() {
+    try {
+      const data = await getRoutingMode();
+      setRoutingMode(data.mode);
+    } catch (e: any) {
+      console.error("Error loading routing mode:", e);
     }
   }
 
@@ -80,6 +99,22 @@ export function AdminScreen() {
       showToast("Failed to save: " + (e?.message || String(e)), "error");
     } finally {
       setKpiSaving(false);
+    }
+  }
+
+  async function handleSaveRoutingMode() {
+    setRoutingModeSaving(true);
+    setRoutingModeMsg(null);
+    try {
+      await apiSetRoutingMode(routingMode);
+      setRoutingModeMsg(`✅ Routing mode set to ${routingMode}`);
+      showToast(`Routing mode changed to ${routingMode}`, "success");
+    } catch (e: any) {
+      console.error("Error saving routing mode:", e);
+      setRoutingModeMsg(`❌ Error: ${e.message}`);
+      showToast("Failed to save routing mode", "error");
+    } finally {
+      setRoutingModeSaving(false);
     }
   }
 
@@ -218,6 +253,129 @@ export function AdminScreen() {
             {connectMsg}
           </div>
         )}
+      </div>
+
+      {/* Routing Decision Mode Card */}
+      <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+              Routing Decision Mode
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Control how routing decisions are made
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {/* Mode Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              Decision Mode
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Manual Approval Option */}
+              <button
+                onClick={() => setRoutingMode("MANUAL_APPROVAL")}
+                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                  routingMode === "MANUAL_APPROVAL"
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                    : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    routingMode === "MANUAL_APPROVAL"
+                      ? "border-blue-500 bg-blue-500"
+                      : "border-gray-300 dark:border-gray-600"
+                  }`}>
+                    {routingMode === "MANUAL_APPROVAL" && (
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 dark:text-white">
+                      Manual Approval
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      Manager reviews and approves each routing suggestion before assignment
+                    </div>
+                    <div className="mt-2 inline-flex items-center px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                      Recommended for initial setup
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              {/* Auto Assignment Option */}
+              <button
+                onClick={() => setRoutingMode("AUTO")}
+                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                  routingMode === "AUTO"
+                    ? "border-green-500 bg-green-50 dark:bg-green-900/20"
+                    : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    routingMode === "AUTO"
+                      ? "border-green-500 bg-green-500"
+                      : "border-gray-300 dark:border-gray-600"
+                  }`}>
+                    {routingMode === "AUTO" && (
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 dark:text-white">
+                      Automatic Assignment
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      System automatically assigns leads to best-matched agents without manual approval
+                    </div>
+                    <div className="mt-2 inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      Faster processing
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Save Button */}
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              onClick={handleSaveRoutingMode}
+              disabled={routingModeSaving}
+              className="px-6 py-2.5 rounded-lg font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
+            >
+              {routingModeSaving ? "Saving..." : "Save Decision Mode"}
+            </button>
+          </div>
+
+          {/* Status Message */}
+          {routingModeMsg && (
+            <div className={`p-3 rounded-lg text-sm ${
+              routingModeMsg.includes("✅")
+                ? "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200"
+                : "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200"
+            }`}>
+              {routingModeMsg}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Phase 2: KPI Weights Configuration Card */}
@@ -755,6 +913,9 @@ export function AdminScreen() {
           )}
         </div>
       )}
+
+      {/* Agent Availability & Capacity Management */}
+      <AgentAvailabilityManager />
     </div>
   );
 }

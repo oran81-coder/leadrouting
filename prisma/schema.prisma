@@ -84,6 +84,8 @@ model RoutingSettings {
   mode      String   @default("MANUAL_APPROVAL")
   // Phase 2: Daily lead threshold for availability calculation
   dailyLeadThreshold Int @default(20)
+  // KPI Weights (0-100 for each metric) - JSON string
+  kpiWeights String? // JSON: { workload, conversionHistorical, recentPerformance, responseTime, avgTimeToClose, avgDealSize, industryMatch, hotStreak }
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -139,6 +141,17 @@ model MondayUserCache {
   @@unique([orgId, userId])
   @@index([orgId, email])
   @@index([orgId, name])
+}
+
+model MondayBoardCache {
+  id        String   @id @default(cuid())
+  orgId     String
+  boardId   String
+  boardName String
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, boardId])
+  @@index([orgId, boardName])
 }
 
 model MondayCredential {
@@ -355,6 +368,45 @@ model AgentProfile {
   @@index([orgId, conversionRate]) // Sort by performance
   @@index([orgId, hotStreakActive, availability]) // Find hot available agents
   @@index([orgId, burnoutScore]) // Monitor burnout levels
+}
+
+// ============================================
+// Agent Availability & Capacity Management
+// ============================================
+
+model AgentAvailability {
+  id          String   @id @default(cuid())
+  orgId       String
+  agentUserId String   // Monday.com user ID
+  
+  // Availability Status
+  isAvailable Boolean  @default(true)  // Toggle: available/not available
+  reason      String?  // Optional reason for exclusion (e.g., "On vacation")
+  
+  // Status changed by
+  updatedBy   String?  // Admin user ID who made the change
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  
+  @@unique([orgId, agentUserId])
+  @@index([orgId])
+  @@index([orgId, isAvailable])
+}
+
+model CapacitySettings {
+  id     String @id @default(cuid())
+  orgId  String @unique
+  
+  // Global capacity limits (applies to all agents)
+  dailyLimit   Int? // Max leads per day (null = unlimited)
+  weeklyLimit  Int? // Max leads per week (null = unlimited)
+  monthlyLimit Int? // Max leads per month (null = unlimited)
+  
+  updatedBy String?  // Admin user ID
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  
+  @@index([orgId])
 }
 
 // ============================================

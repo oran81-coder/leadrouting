@@ -49,7 +49,7 @@ async function callExecute(boardId: string, itemId: string) {
 
 export function startLeadIntakePoller() {
   const seconds = Number(optionalEnv("LEAD_INTAKE_POLL_SECONDS", "120"));
-  const limitPerBoard = Number(optionalEnv("LEAD_INTAKE_LIMIT_PER_BOARD", "50"));
+  const limitPerBoard = Number(optionalEnv("LEAD_INTAKE_LIMIT_PER_BOARD", "500"));
   if (!seconds || seconds < 15) return;
 
   const tick = async () => {

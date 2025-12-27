@@ -44,8 +44,9 @@ export function ManagerScreen() {
     setLoading(true);
     setError(null);
     try {
+      // Always fetch all proposals for accurate KPI counts
       const result = await listProposals({
-        status: statusFilter || undefined,
+        status: undefined, // Don't filter on server - filter client-side instead
         limit: 100,
       });
       setProposals(result.items);
@@ -244,8 +245,12 @@ export function ManagerScreen() {
     }
   }
 
-  // Filter proposals based on search (debounced for performance)
+  // Filter proposals based on status and search (debounced for performance)
   const filteredProposals = proposals.filter((p) => {
+    // Status filter
+    if (statusFilter && p.status !== statusFilter) return false;
+    
+    // Search filter
     if (!debouncedSearchQuery) return true;
     const search = debouncedSearchQuery.toLowerCase();
     return (
@@ -260,7 +265,7 @@ export function ManagerScreen() {
 
   // Calculate KPIs
   const pendingCount = proposals.filter((p) => p.status === "PENDING" || p.status === "PROPOSED").length;
-  const approvedCount = proposals.filter((p) => p.status === "APPROVED").length;
+  const approvedCount = proposals.filter((p) => p.status === "APPROVED" || p.status === "APPLIED").length;
   const rejectedCount = proposals.filter((p) => p.status === "REJECTED").length;
   const totalCount = proposals.length;
 

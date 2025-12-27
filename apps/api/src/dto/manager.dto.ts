@@ -1,5 +1,6 @@
 import type { RoutingProposal } from "../../../../packages/modules/routing-state/src/infrastructure/routingProposal.repo";
 import { PrismaMondayUserCacheRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayUserCache.repo";
+import { PrismaMondayBoardCacheRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayBoardCache.repo";
 
 export type ManagerProposalDTO = {
   id: string;
@@ -7,6 +8,7 @@ export type ManagerProposalDTO = {
   createdAt: string;
 
   boardId: string;
+  boardName: string | null; // Board name from cache
   itemId: string;
   itemName: string | null; // Name of the lead/item from Monday.com
 
@@ -53,6 +55,16 @@ export async function toManagerProposalDTO(p: RoutingProposal, orgId: string): P
     }
   }
 
+  // Resolve board name from Monday board cache
+  let boardName: string | null = null;
+  try {
+    const boardRepo = new PrismaMondayBoardCacheRepo();
+    const board = await boardRepo.get(orgId, p.boardId);
+    boardName = board?.boardName ?? null;
+  } catch (error) {
+    console.error("Failed to resolve board name:", error);
+  }
+
   // Extract match score from explainability
   let matchScore: number | null = null;
   if (explainability?.topAgent?.score !== undefined) {
@@ -64,6 +76,7 @@ export async function toManagerProposalDTO(p: RoutingProposal, orgId: string): P
     status: p.status,
     createdAt: p.createdAt,
     boardId: p.boardId,
+    boardName,
     itemId: p.itemId,
     itemName: p.itemName ?? null,
     suggestedAssigneeRaw,

@@ -4,11 +4,15 @@ import { requireEnv, optionalEnv } from "../config/env";
 import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/application/monday.orgClient";
 import { applyAssignmentToMonday } from "../../../../packages/modules/monday-integration/src/application/monday.writeback";
 import { resolveMondayPersonId } from "../../../../packages/modules/monday-integration/src/application/monday.people";
+import { getPrisma } from "../../../../packages/core/src/db/prisma";
+import { createModuleLogger } from "../infrastructure/logger";
 
 import { PrismaRoutingProposalRepo } from "../../../../packages/modules/routing-state/src/infrastructure/routingProposal.repo";
 import { PrismaRoutingApplyRepo } from "../../../../packages/modules/routing-state/src/infrastructure/routingApply.repo";
 import { PrismaFieldMappingConfigRepo } from "../../../../packages/modules/field-mapping/src/infrastructure/mappingConfig.repo";
 import { PrismaAuditRepo } from "../../../../packages/modules/audit-logging/src/infrastructure/audit.repo";
+
+const logger = createModuleLogger('ManagerRoutes');
 
 /**
  * Manager approval endpoints (Phase 1 skeleton).
@@ -90,56 +94,86 @@ export function managerRoutes() {
 
   r.post("/proposals/:id/approve", async (req, res) => {
     const id = String(req.params.id);
-    const proposal = await proposalRepo.getById(ORG_ID, id);
-    if (!proposal) return res.status(404).json({ ok: false, error: "Proposal not found" });
-    if (proposal.status !== "PROPOSED") return res.status(400).json({ ok: false, error: "Proposal is not PROPOSED" });
+    try {
+      const proposal = await proposalRepo.getById(ORG_ID, id);
+      if (!proposal) return res.status(404).json({ ok: false, error: "Proposal not found" });
+      if (proposal.status !== "PROPOSED") return res.status(400).json({ ok: false, error: "Proposal is not PROPOSED" });
 
-    const mapping = await mappingRepo.getLatest(ORG_ID);
-    if (!mapping) return res.status(400).json({ ok: false, error: "Missing mapping config" });
+      const mapping = await mappingRepo.getLatest(ORG_ID);
+      if (!mapping) return res.status(400).json({ ok: false, error: "Missing mapping config" });
 
-    const client = await createMondayClientForOrg(ORG_ID);
+      const client = await createMondayClientForOrg(ORG_ID);
 
-    const action = (proposal.action as any);
-    if (!action?.value) return res.status(400).json({ ok: false, error: "Proposal has no action/value" });
+      const action = (proposal.action as any);
+      if (!action?.value) return res.status(400).json({ ok: false, error: "Proposal has no action/value" });
 
-    let assigneeResolvedValue = String(action.value);
+      let assigneeResolvedValue = String(action.value);
       if ((mapping as any).writebackTargets?.assignedAgent?.columnType === 'people') {
         assigneeResolvedValue = String(await resolveMondayPersonId(client as any, ORG_ID, assigneeResolvedValue));
       }
 
       const reason = (proposal.selectedRule as any)?.name ? `${(proposal.selectedRule as any).name}` : "Approved";
-    const guard = await applyRepo.tryBegin(ORG_ID, id);
+      
+      // Check if already applied
+      const guard = await applyRepo.tryBegin(ORG_ID, id);
       if (guard === "ALREADY") {
         return res.json({ ok: true, id, status: "APPLIED", alreadyApplied: true });
       }
 
-      const guard2 = await applyRepo.tryBegin(ORG_ID, id);
-            if (guard2 === "ALREADY") {
-              return res.json({ ok: true, id, status: "APPLIED", alreadyApplied: true });
-            }
+      // Apply to Monday.com
+      logger.info(`[APPROVE] Applying proposal ${id} to Monday.com...`);
+      await applyAssignmentToMonday(client as any, (mapping as any).writebackTargets, {
+        boardId: proposal.boardId,
+        itemId: proposal.itemId,
+        assigneeValue: assigneeResolvedValue,
+        reason,
+        status: "Assigned",
+      });
+      logger.info(`[APPROVE] Successfully applied to Monday.com`);
 
-            await applyAssignmentToMonday(client as any, (mapping as any).writebackTargets, {
-      boardId: proposal.boardId,
-      itemId: proposal.itemId,
-      assigneeValue: assigneeResolvedValue,
-      reason,
-      status: "Assigned",
-    });
+      // Update proposal status
+      await proposalRepo.setDecision({ orgId: ORG_ID, id, status: "APPROVED", decidedBy: ACTOR, decisionNotes: req.body?.notes ?? null });
+      await proposalRepo.markApplied(ORG_ID, id);
 
-    await proposalRepo.setDecision({ orgId: ORG_ID, id, status: "APPROVED", decidedBy: ACTOR, decisionNotes: req.body?.notes ?? null });
-    await proposalRepo.markApplied(ORG_ID, id);
+      // Log audit
+      await auditRepo.log({
+        orgId: ORG_ID,
+        actorUserId: ACTOR,
+        action: "routing.approve_and_apply",
+        entityType: "RoutingProposal",
+        entityId: id,
+        before: null,
+        after: { applied: true },
+      });
 
-    await auditRepo.log({
-      orgId: ORG_ID,
-      actorUserId: ACTOR,
-      action: "routing.approve_and_apply",
-      entityType: "RoutingProposal",
-      entityId: id,
-      before: null,
-      after: { applied: true },
-    });
+      logger.info(`[APPROVE] Proposal ${id} fully approved and applied`);
+      return res.json({ ok: true, id, status: "APPLIED" });
+    } catch (error: any) {
+      logger.error(`[APPROVE] Failed to approve proposal ${id}:`, { error: error.message, stack: error.stack });
+      
+      // IMPORTANT: If we already created RoutingApply record but failed after,
+      // we should clean it up so user can retry
+      try {
+        const prisma = getPrisma();
+        await prisma.routingApply.delete({
+          where: {
+            orgId_proposalId: {
+              orgId: ORG_ID,
+              proposalId: id,
+            },
+          },
+        });
+        logger.info(`[APPROVE] Cleaned up RoutingApply record for retry`);
+      } catch (cleanupError) {
+        // Ignore if record doesn't exist
+        logger.warn(`[APPROVE] Could not clean up RoutingApply record:`, cleanupError);
+      }
 
-    return res.json({ ok: true, id, status: "APPLIED" });
+      return res.status(500).json({ 
+        ok: false, 
+        error: `Failed to approve proposal: ${error.message}` 
+      });
+    }
   });
 
   r.post("/proposals/:id/reject", async (req, res) => {
@@ -163,77 +197,111 @@ export function managerRoutes() {
   });
 
   r.post("/proposals/:id/override", async (req, res) => {
-  const id = String(req.params.id);
-  const proposal = await proposalRepo.getById(ORG_ID, id);
-  if (!proposal) return res.status(404).json({ ok: false, error: "Proposal not found" });
+    const id = String(req.params.id);
+    try {
+      const proposal = await proposalRepo.getById(ORG_ID, id);
+      if (!proposal) return res.status(404).json({ ok: false, error: "Proposal not found" });
 
-  const newValue = req.body?.assigneeValue;
-  if (!newValue) return res.status(400).json({ ok: false, error: "Missing body.assigneeValue" });
+      const newValue = req.body?.assigneeValue;
+      if (!newValue) return res.status(400).json({ ok: false, error: "Missing body.assigneeValue" });
 
-  const applyNow = req.body?.applyNow === true;
+      const applyNow = req.body?.applyNow === true;
 
-  const updated = await proposalRepo.setDecision({
-    orgId: ORG_ID,
-    id,
-    status: "OVERRIDDEN",
-    decidedBy: ACTOR,
-    decisionNotes: req.body?.notes ?? null,
-    actionOverride: { ...(proposal.action as any), value: String(newValue) },
+      // Update proposal status to OVERRIDDEN
+      const updated = await proposalRepo.setDecision({
+        orgId: ORG_ID,
+        id,
+        status: "OVERRIDDEN",
+        decidedBy: ACTOR,
+        decisionNotes: req.body?.notes ?? null,
+        actionOverride: { ...(proposal.action as any), value: String(newValue) },
+      });
+
+      await auditRepo.log({
+        orgId: ORG_ID,
+        actorUserId: ACTOR,
+        action: "routing.override",
+        entityType: "RoutingProposal",
+        entityId: id,
+        before: null,
+        after: { assigneeValue: String(newValue), applyNow },
+      });
+
+      // If manager chose not to apply now, just return
+      if (!applyNow) {
+        logger.info(`[OVERRIDE] Proposal ${id} overridden but not applied to Monday.com`);
+        return res.json({ ok: true, id, status: "OVERRIDDEN", applied: false });
+      }
+
+      // Apply to Monday.com
+      logger.info(`[OVERRIDE] Applying overridden proposal ${id} to Monday.com...`);
+
+      // Check idempotency guard
+      const guard = await applyRepo.tryBegin(ORG_ID, id);
+      if (guard === "ALREADY") {
+        logger.info(`[OVERRIDE] Proposal ${id} already applied`);
+        return res.json({ ok: true, id, status: "APPLIED", alreadyApplied: true });
+      }
+
+      const mapping = await mappingRepo.getLatest(ORG_ID);
+      if (!mapping) return res.status(400).json({ ok: false, error: "Missing mapping config" });
+
+      const client = await createMondayClientForOrg(ORG_ID);
+
+      let overrideResolvedValue = String(newValue);
+      if ((mapping as any).writebackTargets?.assignedAgent?.columnType === 'people') {
+        overrideResolvedValue = String(await resolveMondayPersonId(client as any, ORG_ID, overrideResolvedValue));
+      }
+      
+      const reason = "Overridden by manager";
+      await applyAssignmentToMonday(client as any, (mapping as any).writebackTargets, {
+        boardId: updated.boardId,
+        itemId: updated.itemId,
+        assigneeValue: overrideResolvedValue,
+        reason,
+        status: "Assigned",
+      });
+      logger.info(`[OVERRIDE] Successfully applied to Monday.com`);
+
+      await proposalRepo.markApplied(ORG_ID, id);
+
+      await auditRepo.log({
+        orgId: ORG_ID,
+        actorUserId: ACTOR,
+        action: "routing.override_and_apply",
+        entityType: "RoutingProposal",
+        entityId: id,
+        before: null,
+        after: { applied: true },
+      });
+
+      logger.info(`[OVERRIDE] Proposal ${id} fully overridden and applied`);
+      return res.json({ ok: true, id, status: "APPLIED" });
+    } catch (error: any) {
+      logger.error(`[OVERRIDE] Failed to override/apply proposal ${id}:`, { error: error.message, stack: error.stack });
+      
+      // Clean up RoutingApply record if it was created
+      try {
+        const prisma = getPrisma();
+        await prisma.routingApply.delete({
+          where: {
+            orgId_proposalId: {
+              orgId: ORG_ID,
+              proposalId: id,
+            },
+          },
+        });
+        logger.info(`[OVERRIDE] Cleaned up RoutingApply record for retry`);
+      } catch (cleanupError) {
+        logger.warn(`[OVERRIDE] Could not clean up RoutingApply record:`, cleanupError);
+      }
+
+      return res.status(500).json({ 
+        ok: false, 
+        error: `Failed to override proposal: ${error.message}` 
+      });
+    }
   });
-
-  await auditRepo.log({
-    orgId: ORG_ID,
-    actorUserId: ACTOR,
-    action: "routing.override",
-    entityType: "RoutingProposal",
-    entityId: id,
-    before: null,
-    after: { assigneeValue: String(newValue), applyNow },
-  });
-
-  if (!applyNow) {
-    // Manager overrode proposal but chose not to write back to Monday now.
-    return res.json({ ok: true, id, status: "OVERRIDDEN", applied: false });
-  }
-
-
-
-  if (!applyNow) {
-    return res.json({ ok: true, id, status: "OVERRIDDEN" });
-  }
-
-  const mapping = await mappingRepo.getLatest(ORG_ID);
-  if (!mapping) return res.status(400).json({ ok: false, error: "Missing mapping config" });
-
-  const client = await createMondayClientForOrg(ORG_ID);
-
-  let overrideResolvedValue = String(newValue);
-            if ((mapping as any).writebackTargets?.assignedAgent?.columnType === 'people') {
-              overrideResolvedValue = String(await resolveMondayPersonId(client as any, ORG_ID, overrideResolvedValue));
-            }
-            const reason = "Overridden by manager";
-  await applyAssignmentToMonday(client as any, (mapping as any).writebackTargets, {
-    boardId: updated.boardId,
-    itemId: updated.itemId,
-    assigneeValue: overrideResolvedValue,
-    reason,
-    status: "Assigned",
-  });
-
-  await proposalRepo.markApplied(ORG_ID, id);
-
-  await auditRepo.log({
-    orgId: ORG_ID,
-    actorUserId: ACTOR,
-    action: "routing.override_and_apply",
-    entityType: "RoutingProposal",
-    entityId: id,
-    before: null,
-    after: { applied: true },
-  });
-
-  return res.json({ ok: true, id, status: "APPLIED" });
-});
 
 
   
@@ -252,6 +320,8 @@ r.post("/proposals/bulk-approve", async (req, res) => {
   const client = await createMondayClientForOrg(ORG_ID);
 
   const results: Array<{ id: string; ok: boolean; status?: string; error?: string; alreadyApplied?: boolean }> = [];
+
+  logger.info(`[BULK-APPROVE] Processing ${ids.length} proposals...`);
 
   for (const id of ids) {
     try {
@@ -280,6 +350,7 @@ r.post("/proposals/bulk-approve", async (req, res) => {
       }
 
       const reason = (proposal.selectedRule as any)?.name ? String((proposal.selectedRule as any).name) : "Approved by manager";
+      
       await applyAssignmentToMonday(client as any, (mapping as any).writebackTargets, {
         boardId: proposal.boardId,
         itemId: proposal.itemId,
@@ -288,6 +359,13 @@ r.post("/proposals/bulk-approve", async (req, res) => {
         status: "Assigned",
       });
 
+      await proposalRepo.setDecision({ 
+        orgId: ORG_ID, 
+        id, 
+        status: "APPROVED", 
+        decidedBy: ACTOR, 
+        decisionNotes: null 
+      });
       await proposalRepo.markApplied(ORG_ID, id);
 
       await auditRepo.log({
@@ -301,12 +379,33 @@ r.post("/proposals/bulk-approve", async (req, res) => {
       });
 
       results.push({ id, ok: true, status: "APPLIED" });
-    } catch (e: any) {
-      results.push({ id, ok: false, error: e?.message ?? String(e) });
+      logger.info(`[BULK-APPROVE] Successfully approved ${id}`);
+    } catch (err: any) {
+      logger.error(`[BULK-APPROVE] Failed to approve ${id}:`, { error: err.message });
+      
+      // Clean up RoutingApply record if it was created
+      try {
+        const prisma = getPrisma();
+        await prisma.routingApply.delete({
+          where: {
+            orgId_proposalId: {
+              orgId: ORG_ID,
+              proposalId: id,
+            },
+          },
+        });
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+      }
+      
+      results.push({ id, ok: false, error: err?.message || String(err) });
     }
   }
 
-  return res.json({ ok: true, results });
+  const successCount = results.filter((r) => r.ok).length;
+  logger.info(`[BULK-APPROVE] Completed: ${successCount}/${ids.length} succeeded`);
+  
+  return res.json({ ok: true, results, total: ids.length, succeeded: successCount });
 });
 
     

@@ -5,8 +5,9 @@
  * Handles tie-breaking, gating filters, and ranking.
  */
 
-import type { AgentProfile } from "../../../../agent-profiling/src/application/agentProfiler";
-import { isAgentEligible, compareAgents } from "../../../../agent-profiling/src/application/agentProfiler";
+import { SCORE, RANK, CONFIDENCE, GATING } from "./scoring.constants";
+import type { AgentProfile } from "../../../agent-profiling/src/application/agentProfiler";
+import { isAgentEligible, compareAgents } from "../../../agent-profiling/src/application/agentProfiler";
 import type {
   ScoringRule,
   NormalizedLead,
@@ -71,9 +72,9 @@ export interface GatingFilters {
 }
 
 const DEFAULT_GATING: GatingFilters = {
-  requireAvailability: true,
-  excludeHighBurnout: false,
-  maxBurnoutScore: 100,
+  requireAvailability: GATING.REQUIRE_AVAILABILITY,
+  excludeHighBurnout: GATING.EXCLUDE_HIGH_BURNOUT,
+  maxBurnoutScore: SCORE.MAX,
 };
 
 /**
@@ -133,7 +134,7 @@ function normalizeScores(scores: number[]): number[] {
   const maxScore = Math.max(...scores);
   if (maxScore === 0) return scores.map(() => 0);
   
-  return scores.map(score => (score / maxScore) * 100);
+  return scores.map(score => (score / maxScore) * SCORE.MAX);
 }
 
 /**
@@ -193,13 +194,13 @@ export function computeScores(
   const agentMap = new Map(agents.map(a => [a.agentUserId, a]));
   
   // Build scores
-  let scores: AgentScore[] = evaluations.map(eval => ({
-    agentUserId: eval.agentUserId,
-    agentName: agentMap.get(eval.agentUserId)?.agentName,
-    totalScore: eval.totalContribution,
+  let scores: AgentScore[] = evaluations.map(agentEval => ({
+    agentUserId: agentEval.agentUserId,
+    agentName: agentMap.get(agentEval.agentUserId)?.agentName,
+    totalScore: agentEval.totalContribution,
     normalizedScore: 0, // Will be calculated after
     rank: 0,            // Will be assigned after sorting
-    ruleContributions: eval,
+    ruleContributions: agentEval,
     tieBreakUsed: false,
     eligible: true,
   }));
@@ -211,7 +212,7 @@ export function computeScores(
       agentName: agent.agentName,
       totalScore: 0,
       normalizedScore: 0,
-      rank: 999,
+      rank: RANK.INELIGIBLE,
       ruleContributions: {
         agentUserId: agent.agentUserId,
         results: [],
@@ -243,7 +244,7 @@ export function computeScores(
     if (!a.eligible && !b.eligible) return 0;
     
     // Compare normalized scores
-    if (Math.abs(a.normalizedScore - b.normalizedScore) > 0.01) {
+    if (Math.abs(a.normalizedScore - b.normalizedScore) > SCORE.EPSILON) {
       return b.normalizedScore - a.normalizedScore;
     }
     
@@ -261,8 +262,8 @@ export function computeScores(
   
   // Get alternatives (ranks 2-4)
   const alternativeAgents = scores
-    .filter((s, i) => i > 0 && i <= 3 && s.eligible)
-    .slice(0, 3);
+    .filter((s, i) => i > 0 && i <= RANK.MAX_ALTERNATIVES && s.eligible)
+    .slice(0, RANK.MAX_ALTERNATIVES);
   
   // Count rules applied
   const rulesApplied = recommendedAgent
@@ -300,8 +301,8 @@ export function getScoreSummary(score: AgentScore): {
     .map(r => `${r.ruleName}: ${r.contribution.toFixed(1)}pts`);
   
   let confidence: "high" | "medium" | "low" = "medium";
-  if (score.normalizedScore >= 80) confidence = "high";
-  if (score.normalizedScore < 50) confidence = "low";
+  if (score.normalizedScore >= CONFIDENCE.HIGH_THRESHOLD) confidence = "high";
+  if (score.normalizedScore < CONFIDENCE.MEDIUM_THRESHOLD) confidence = "low";
   
   return {
     score: `${score.normalizedScore.toFixed(1)}/100`,

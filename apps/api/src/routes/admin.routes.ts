@@ -392,6 +392,69 @@ export function adminRoutes() {
     });
   });
 
+  /**
+   * GET /admin/sync-status
+   * Get database sync status - how many leads, oldest/newest, etc.
+   */
+  r.get("/sync-status", async (_req, res) => {
+    try {
+      const { getPrisma } = await import("../../../../packages/core/src/db/prisma");
+      const prisma = getPrisma();
+
+      // Get total leads count
+      const totalLeads = await prisma.leadFact.count({ where: { orgId: ORG_ID } });
+
+      // Get oldest and newest leads
+      const oldestLead = await prisma.leadFact.findFirst({
+        where: { orgId: ORG_ID, enteredAt: { not: null } },
+        orderBy: { enteredAt: 'asc' },
+        select: { enteredAt: true, itemId: true, boardId: true },
+      });
+
+      const newestLead = await prisma.leadFact.findFirst({
+        where: { orgId: ORG_ID, enteredAt: { not: null } },
+        orderBy: { enteredAt: 'desc' },
+        select: { enteredAt: true, itemId: true, boardId: true },
+      });
+
+      // Get leads by board
+      const leadsByBoard = await prisma.leadFact.groupBy({
+        by: ['boardId'],
+        where: { orgId: ORG_ID },
+        _count: { boardId: true },
+      });
+
+      // Get assigned vs unassigned
+      const assignedCount = await prisma.leadFact.count({
+        where: { orgId: ORG_ID, assignedUserId: { not: null } },
+      });
+
+      const closedWonCount = await prisma.leadFact.count({
+        where: { orgId: ORG_ID, closedWonAt: { not: null } },
+      });
+
+      return res.json({
+        ok: true,
+        totalLeads,
+        assignedLeads: assignedCount,
+        closedWonLeads: closedWonCount,
+        unassignedLeads: totalLeads - assignedCount,
+        oldestLead: oldestLead?.enteredAt || null,
+        newestLead: newestLead?.enteredAt || null,
+        leadsByBoard: leadsByBoard.map(b => ({
+          boardId: b.boardId,
+          count: b._count.boardId,
+        })),
+      });
+    } catch (error: any) {
+      console.error("[admin/sync-status] Error:", error);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+      });
+    }
+  });
+
   // -------------------------
   // Historical Data & Metrics
   // -------------------------

@@ -3,6 +3,7 @@ export type ManagerProposalDTO = {
   status: string;
   createdAt: string;
   boardId: string;
+  boardName: string | null; // Board name from cache
   itemId: string;
   itemName: string | null; // Name of the lead/item from Monday.com
   suggestedAssigneeRaw: string | null;
@@ -274,6 +275,17 @@ export type OutcomesPerAgentDTO = {
   revenue: number | null;
   avgDeal: number | null;
   medianTimeToCloseDays: number | null;
+  
+  // Additional metrics from Agent Profile
+  avgResponseTime: number | null; // Seconds
+  availability: number | null; // 0-1 scale
+  currentActiveLeads: number | null;
+  dailyLeadsToday: number | null;
+  hotStreakCount: number | null;
+  hotStreakActive: boolean | null;
+  burnoutScore: number | null; // 0-100
+  industryExpertise: string[] | null; // Array of industries
+  totalLeadsHandled: number | null;
 };
 
 export type OutcomesSummaryDTO = {
@@ -427,6 +439,28 @@ export async function saveKPIWeights(weights: KPIWeights, settings: KPISettings)
 }
 
 // ============================================================================
+// Routing Mode API
+// ============================================================================
+
+export type RoutingMode = "MANUAL_APPROVAL" | "AUTO";
+
+export interface RoutingModeResponse {
+  ok: boolean;
+  mode: RoutingMode;
+}
+
+export async function getRoutingMode(): Promise<RoutingModeResponse> {
+  return await http<RoutingModeResponse>(`/routing/settings/mode`);
+}
+
+export async function setRoutingMode(mode: RoutingMode): Promise<{ ok: boolean }> {
+  return await http<{ ok: boolean }>(`/routing/settings/mode`, {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+}
+
+// ============================================================================
 // Performance Metrics API
 // ============================================================================
 
@@ -449,3 +483,130 @@ export interface MetricsResponse {
 export async function getPerformanceMetrics(): Promise<MetricsResponse> {
   return await http<MetricsResponse>(`/metrics/json`);
 }
+
+// ============================================================================
+// Agent Availability & Capacity API
+// ============================================================================
+
+export interface AgentAvailabilityDTO {
+  id: string;
+  orgId: string;
+  agentUserId: string;
+  isAvailable: boolean;
+  reason?: string | null;
+  updatedBy?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface CapacitySettingsDTO {
+  id: string;
+  orgId: string;
+  dailyLimit: number | null;
+  weeklyLimit: number | null;
+  monthlyLimit: number | null;
+  updatedBy?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface AgentCapacityStatus {
+  agentUserId: string;
+  dailyCount: number;
+  weeklyCount: number;
+  monthlyCount: number;
+  dailyReached: boolean;
+  weeklyReached: boolean;
+  monthlyReached: boolean;
+  hasCapacityIssue: boolean;
+  warning?: string | null;
+}
+
+/**
+ * Get all agent availability settings
+ */
+export async function getAgentAvailability(): Promise<{ ok: boolean; data: AgentAvailabilityDTO[] }> {
+  return await http<{ ok: boolean; data: AgentAvailabilityDTO[] }>(`/availability/agents`);
+}
+
+/**
+ * Set agent availability status
+ */
+export async function setAgentAvailability(
+  agentUserId: string,
+  isAvailable: boolean,
+  reason?: string
+): Promise<{ ok: boolean; data: AgentAvailabilityDTO }> {
+  return await http<{ ok: boolean; data: AgentAvailabilityDTO }>(
+    `/availability/agents/${encodeURIComponent(agentUserId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ isAvailable, reason }),
+    }
+  );
+}
+
+/**
+ * Get global capacity settings
+ */
+export async function getCapacitySettings(): Promise<{ ok: boolean; data: CapacitySettingsDTO }> {
+  return await http<{ ok: boolean; data: CapacitySettingsDTO }>(`/availability/capacity/settings`);
+}
+
+/**
+ * Update global capacity settings
+ */
+export async function setCapacitySettings(settings: {
+  dailyLimit?: number | null;
+  weeklyLimit?: number | null;
+  monthlyLimit?: number | null;
+}): Promise<{ ok: boolean; data: CapacitySettingsDTO }> {
+  return await http<{ ok: boolean; data: CapacitySettingsDTO }>(
+    `/availability/capacity/settings`,
+    {
+      method: "POST",
+      body: JSON.stringify(settings),
+    }
+  );
+}
+
+/**
+ * Get current capacity status for all agents
+ */
+export async function getCapacityStatus(): Promise<{
+  ok: boolean;
+  data: {
+    settings: {
+      dailyLimit: number | null;
+      weeklyLimit: number | null;
+      monthlyLimit: number | null;
+    };
+    agents: AgentCapacityStatus[];
+  };
+}> {
+  return await http<{
+    ok: boolean;
+    data: {
+      settings: {
+        dailyLimit: number | null;
+        weeklyLimit: number | null;
+        monthlyLimit: number | null;
+      };
+      agents: AgentCapacityStatus[];
+    };
+  }>(`/availability/capacity/status`);
+}
+
+/**
+ * List Monday.com users for the organization
+ */
+export async function listMondayUsers(): Promise<{
+  ok: boolean;
+  users: MondayUser[];
+}> {
+  return await http<{
+    ok: boolean;
+    users: MondayUser[];
+  }>(`/admin/monday/users`);
+}
+

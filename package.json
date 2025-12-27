@@ -8,7 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "tsx watch apps/api/src/main.ts",
+    "dev": "ts-node -r tsconfig-paths/register apps/api/src/main.ts",
+    "dev:watch": "nodemon --watch 'apps/**/*.ts' --watch 'packages/**/*.ts' --exec ts-node -r tsconfig-paths/register apps/api/src/main.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/apps/api/src/main.js",
     "lint": "echo \"(optional) add eslint later\"",
@@ -48,10 +49,13 @@
     "@types/node": "^20.11.30",
     "@types/supertest": "^6.0.3",
     "jest": "^30.2.0",
+    "nodemon": "^3.1.11",
     "prisma": "^5.18.0",
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.6",
-    "tsx": "^4.19.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.7.1",
     "typescript": "^5.6.3"
   }
 }

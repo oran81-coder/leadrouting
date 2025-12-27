@@ -89,9 +89,14 @@ function rateLimitHandler(req: Request, res: Response) {
 
 /**
  * Skip rate limiting in development mode (optional)
+ * By default, rate limiting is disabled in development unless explicitly enabled
  */
 function skipRateLimitInDev(req: Request): boolean {
-  return env.NODE_ENV === "development" && env.RATE_LIMIT_ENABLED === false;
+  // In development, skip rate limiting by default (unless explicitly enabled)
+  if (env.NODE_ENV === "development") {
+    return env.RATE_LIMIT_ENABLED !== "true"; // Skip unless explicitly enabled
+  }
+  return false;
 }
 
 /**

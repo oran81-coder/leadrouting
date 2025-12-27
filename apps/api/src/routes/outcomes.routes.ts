@@ -2,6 +2,7 @@ import { Router } from "express";
 import { PrismaLeadFactRepo } from "../infrastructure/leadFact.repo";
 import { PrismaMetricsConfigRepo } from "../infrastructure/metricsConfig.repo";
 import { PrismaMondayUserCacheRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayUserCache.repo";
+import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
 
 const ORG_ID = "org_1";
 
@@ -13,6 +14,7 @@ export function outcomesRoutes() {
   const factRepo = new PrismaLeadFactRepo();
   const cfgRepo = new PrismaMetricsConfigRepo();
   const userCacheRepo = new PrismaMondayUserCacheRepo();
+  const agentProfileRepo = new PrismaAgentProfileRepo();
 
   r.get("/summary", async (req, res) => {
     try {
@@ -129,6 +131,10 @@ export function outcomesRoutes() {
         userMap.set(user.userId, user.name);
       }
 
+      // Get agent profiles for additional metrics
+      const agentProfiles = await agentProfileRepo.listByOrg(ORG_ID);
+      const profileMap = new Map(agentProfiles.map(p => [p.agentUserId, p]));
+
       // Build perAgent array
       const perAgent = Array.from(agentMap.entries()).map(([agentId, data]) => {
         const convRate = data.assigned > 0 ? data.closedWon / data.assigned : 0;
@@ -146,6 +152,9 @@ export function outcomesRoutes() {
           ? data.revenue / data.closedWon
           : null;
 
+        // Get additional metrics from agent profile
+        const profile = profileMap.get(agentId);
+
         return {
           agentUserId: agentId,
           agentName: userMap.get(agentId) || agentId,
@@ -155,6 +164,17 @@ export function outcomesRoutes() {
           revenue: hasDealAmountMapping ? data.revenue : null,
           avgDeal: hasDealAmountMapping ? avgDealAgent : null,
           medianTimeToCloseDays: medianClose,
+          
+          // Additional metrics from Agent Profile
+          avgResponseTime: profile?.avgResponseTime ?? null,
+          availability: profile?.availability ?? null,
+          currentActiveLeads: profile?.currentActiveLeads ?? null,
+          dailyLeadsToday: profile?.dailyLeadsToday ?? null,
+          hotStreakCount: profile?.hotStreakCount ?? null,
+          hotStreakActive: profile?.hotStreakActive ?? null,
+          burnoutScore: profile?.burnoutScore ?? null,
+          industryExpertise: profile?.industryExpertise ?? null,
+          totalLeadsHandled: profile?.totalLeadsHandled ?? null,
         };
       });
 

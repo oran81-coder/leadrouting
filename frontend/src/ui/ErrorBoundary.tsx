@@ -9,50 +9,51 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
-  errorInfo: ErrorInfo | null;
 }
 
 /**
  * Error Boundary Component
- * Catches JavaScript errors anywhere in the child component tree
- * and displays a fallback UI instead of crashing the entire app
+ * 
+ * Catches JavaScript errors anywhere in the child component tree,
+ * logs those errors, and displays a fallback UI.
  */
-export class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = {
       hasError: false,
       error: null,
-      errorInfo: null,
     };
   }
 
-  static getDerivedStateFromError(error: Error): Partial<State> {
+  static getDerivedStateFromError(error: Error): State {
     // Update state so the next render will show the fallback UI
-    return { hasError: true, error };
+    return {
+      hasError: true,
+      error,
+    };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error details
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    // Log error to console in development
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('ErrorBoundary caught an error:', error, errorInfo);
+    }
 
-    // Update state with error details
-    this.setState({
-      error,
-      errorInfo,
-    });
-
-    // Call optional error callback
+    // Call optional error handler
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
     }
+
+    // In production, you would send this to an error reporting service like Sentry
+    // Example:
+    // Sentry.captureException(error, { contexts: { react: errorInfo } });
   }
 
   handleReset = () => {
     this.setState({
       hasError: false,
       error: null,
-      errorInfo: null,
     });
   };
 
@@ -65,14 +66,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
       // Default fallback UI
       return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
-          <div className="max-w-2xl w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
-            <div className="flex items-center mb-4">
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
+          <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 dark:bg-red-900/20 rounded-full mb-4">
               <svg
-                className="w-12 h-12 text-red-500 mr-4"
+                className="w-6 h-6 text-red-600 dark:text-red-400"
                 fill="none"
-                viewBox="0 0 24 24"
                 stroke="currentColor"
+                viewBox="0 0 24 24"
               >
                 <path
                   strokeLinecap="round"
@@ -81,62 +82,40 @@ export class ErrorBoundary extends Component<Props, State> {
                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                 />
               </svg>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Oops! Something went wrong
-                </h1>
-                <p className="text-gray-600 dark:text-gray-400 mt-1">
-                  We encountered an unexpected error
-                </p>
-              </div>
             </div>
+            
+            <h3 className="text-lg font-semibold text-center text-gray-900 dark:text-white mb-2">
+              😔 משהו השתבש
+            </h3>
+            
+            <p className="text-sm text-center text-gray-600 dark:text-gray-400 mb-4">
+              {this.state.error?.message || 'שגיאה לא צפויה התרחשה'}
+            </p>
 
-            {this.state.error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
-                <h2 className="text-sm font-semibold text-red-800 dark:text-red-400 mb-2">
-                  Error Details:
-                </h2>
-                <p className="text-sm text-red-700 dark:text-red-300 font-mono">
-                  {this.state.error.toString()}
-                </p>
-                {this.state.errorInfo && (
-                  <details className="mt-2">
-                    <summary className="text-sm text-red-700 dark:text-red-300 cursor-pointer hover:underline">
-                      Stack Trace
-                    </summary>
-                    <pre className="mt-2 text-xs text-red-600 dark:text-red-400 overflow-auto max-h-64 bg-white dark:bg-gray-900 p-2 rounded">
-                      {this.state.errorInfo.componentStack}
-                    </pre>
-                  </details>
-                )}
-              </div>
+            {process.env.NODE_ENV !== 'production' && this.state.error?.stack && (
+              <details className="mb-4 p-3 bg-gray-100 dark:bg-gray-900 rounded text-xs">
+                <summary className="cursor-pointer text-gray-700 dark:text-gray-300 font-medium mb-2">
+                  פרטים טכניים
+                </summary>
+                <pre className="text-red-600 dark:text-red-400 overflow-auto max-h-40">
+                  {this.state.error.stack}
+                </pre>
+              </details>
             )}
 
             <div className="flex gap-3">
               <button
                 onClick={this.handleReset}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
               >
-                Try Again
+                נסה שוב
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors"
               >
-                Reload Page
+                רענן דף
               </button>
-              <button
-                onClick={() => (window.location.href = "/")}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-              >
-                Go Home
-              </button>
-            </div>
-
-            <div className="mt-6 text-sm text-gray-600 dark:text-gray-400">
-              <p>
-                If this problem persists, please contact support or check the browser console for more details.
-              </p>
             </div>
           </div>
         </div>
@@ -147,18 +126,4 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 }
 
-/**
- * Hook to use error boundary imperatively
- */
-export function useErrorHandler() {
-  const [error, setError] = React.useState<Error | null>(null);
-
-  React.useEffect(() => {
-    if (error) {
-      throw error;
-    }
-  }, [error]);
-
-  return setError;
-}
-
+export default ErrorBoundary;

@@ -3,8 +3,10 @@ import { createMondayClientForOrg } from "../../../../packages/modules/monday-in
 import { PrismaMetricsConfigRepo } from "../infrastructure/metricsConfig.repo";
 import { PrismaLeadFactRepo } from "../infrastructure/leadFact.repo";
 import { PrismaAgentMetricsRepo } from "../infrastructure/agentMetrics.repo";
+import { createModuleLogger } from "../infrastructure/logger";
 
 const ORG_ID = "org_1";
+const logger = createModuleLogger('MetricsJob');
 
 function numEnv(name: string, def: number) {
   const v = optionalEnv(name, "");
@@ -57,18 +59,28 @@ function hoursBetween(a: Date, b: Date) {
 }
 
 export async function recomputeMetricsNow() {
+  const startTime = Date.now();
+  logger.info('[MetricsJob] Starting metrics recomputation...');
+  
   const cfgRepo = new PrismaMetricsConfigRepo();
   const factRepo = new PrismaLeadFactRepo();
   const snapRepo = new PrismaAgentMetricsRepo();
 
   const cfg = await cfgRepo.getOrCreateDefaults();
   const boardIds = parseBoards(cfg.leadBoardIds);
-  if (!boardIds.length) return { ok: false, message: "No leadBoardIds configured" };
+  if (!boardIds.length) {
+    logger.warn('[MetricsJob] No leadBoardIds configured');
+    return { ok: false, message: "No leadBoardIds configured" };
+  }
+
+  logger.info(`[MetricsJob] Fetching data from ${boardIds.length} board(s): ${boardIds.join(', ')}`);
 
   const client = await createMondayClientForOrg(ORG_ID);
 
   // Pull latest items per board (scoped). Phase 1: bounded fetch.
   const perBoardLimit = numEnv("METRICS_FETCH_LIMIT_PER_BOARD", 500);
+  logger.info(`[MetricsJob] Fetch limit per board: ${perBoardLimit}`);
+  
   const samples = await (client as any).fetchBoardSamples(boardIds as any, perBoardLimit);
 
   const now = new Date();
@@ -235,21 +247,44 @@ export async function recomputeMetricsNow() {
     }
   }
 
-  return { ok: true, message: "Metrics recomputed", agents: agents.length, windows };
+  const duration = Date.now() - startTime;
+  const totalItems = samples.reduce((sum: number, b: any) => sum + (b.items?.length || 0), 0);
+  
+  logger.info(`[MetricsJob] ✅ Completed successfully`);
+  logger.info(`[MetricsJob] - Total items processed: ${totalItems}`);
+  logger.info(`[MetricsJob] - Agents computed: ${agents.length}`);
+  logger.info(`[MetricsJob] - Duration: ${duration}ms (${(duration / 1000).toFixed(2)}s)`);
+  logger.info(`[MetricsJob] - Items per second: ${(totalItems / (duration / 1000)).toFixed(1)}`);
+
+  return { 
+    ok: true, 
+    message: "Metrics recomputed", 
+    agents: agents.length, 
+    windows,
+    itemsProcessed: totalItems,
+    durationMs: duration
+  };
 }
 
 export function startMetricsJob() {
   const enabled = optionalEnv("METRICS_JOB_ENABLED", "true") !== "false";
-  if (!enabled) return;
+  if (!enabled) {
+    logger.info('[MetricsJob] Job disabled via METRICS_JOB_ENABLED');
+    return;
+  }
 
   const intervalSec = numEnv("METRICS_JOB_INTERVAL_SECONDS", 1800); // 30 min
+  logger.info(`[MetricsJob] Job started with interval: ${intervalSec}s (${intervalSec / 60} minutes)`);
+  
   const run = () =>
     recomputeMetricsNow().catch((e: any) => {
-      // Smoke-test safety: don't crash the process on missing creds/config
-      // eslint-disable-next-line no-console
-      console.error("[metrics-job] run failed", e?.message ?? e);
+      logger.error('[MetricsJob] Run failed:', { error: e?.message || String(e), stack: e?.stack });
     });
 
+  // Run immediately on startup
+  logger.info('[MetricsJob] Running initial computation...');
   void run();
+  
+  // Then run on interval
   setInterval(() => void run(), intervalSec * 1000);
 }

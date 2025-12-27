@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import type { ManagerProposalDTO } from "./api";
+import { ScoreBreakdownSkeleton } from "./LoadingComponents";
 
 type ProposalDetailModalProps = {
   proposal: ManagerProposalDTO;
@@ -9,11 +10,32 @@ type ProposalDetailModalProps = {
 };
 
 export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: ProposalDetailModalProps) {
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  
   // Extract explanation from explainability
   const explainability = proposal.explains as any;
-  const explanation = explainability?.explanation || "No explanation available";
-  const matchScore = proposal.matchScore;
+  
+  // Support both old format (string) and new format (RoutingExplanation object)
+  let explanation = "No explanation available";
+  if (typeof explainability === 'string') {
+    // Old format: simple string
+    explanation = explainability || "No explanation available";
+  } else if (explainability && typeof explainability === 'object') {
+    // New format: RoutingExplanation object
+    explanation = explainability.summary || explainability.explanation || "No explanation available";
+  }
+  
+  // Extract match score from multiple possible sources
+  const matchScore = proposal.matchScore 
+    ?? explainability?.recommendedAgent?.score 
+    ?? explainability?.score 
+    ?? null;
+  
   const assigneeName = proposal.suggestedAssigneeName || proposal.suggestedAssigneeRaw || "Unknown";
+  
+  // Extract breakdown from explainability (new format only)
+  const breakdown = explainability?.breakdown || explainability?.recommendedAgent?.breakdown || null;
 
   return (
     <div
@@ -53,33 +75,35 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
         <div className="px-6 py-4 space-y-6">
           {/* Hero Section - Recommendation */}
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border-2 border-blue-200 dark:border-blue-800">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-                  <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  Recommended Assignee
-                </h4>
-                <div className="text-2xl font-bold text-blue-900 dark:text-blue-100 mb-1">
-                  {assigneeName}
+            <div className="mb-4">
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                Recommended Assignee
+              </h4>
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1">
+                  <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                    {assigneeName}
+                  </div>
+                  {proposal.suggestedRuleName && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      via rule: <span className="font-medium">{proposal.suggestedRuleName}</span>
+                    </div>
+                  )}
                 </div>
-                {proposal.suggestedRuleName && (
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    via rule: <span className="font-medium">{proposal.suggestedRuleName}</span>
+                {matchScore != null && (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-600 dark:bg-blue-500 rounded-lg shadow-md">
+                    <span className="text-4xl font-bold text-white">
+                      {Math.round(matchScore)}
+                    </span>
+                    <span className="text-sm text-blue-100 font-medium">
+                      /100
+                    </span>
                   </div>
                 )}
               </div>
-              {matchScore !== null && (
-                <div className="text-center ml-4">
-                  <div className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-                    {Math.round(matchScore)}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                    Match Score
-                  </div>
-                </div>
-              )}
             </div>
             
             {/* Explanation */}
@@ -91,7 +115,222 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
                 {explanation}
               </p>
             </div>
+
+            {/* Score Breakdown - Collapsible */}
+            {breakdown && (
+              <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
+                <button
+                  onClick={async () => {
+                    if (!showBreakdown) {
+                      setBreakdownLoading(true);
+                      // Simulate loading (in real app, this might fetch detailed data)
+                      await new Promise(resolve => setTimeout(resolve, 300));
+                      setBreakdownLoading(false);
+                    }
+                    setShowBreakdown(!showBreakdown);
+                  }}
+                  className="w-full flex items-center justify-between text-left hover:bg-blue-100/50 dark:hover:bg-blue-900/30 rounded-lg p-2 transition-colors"
+                >
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    Score Breakdown
+                  </span>
+                  <svg 
+                    className={`w-5 h-5 text-gray-600 dark:text-gray-400 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {breakdownLoading ? (
+                  <ScoreBreakdownSkeleton />
+                ) : showBreakdown && (
+                  <div className="mt-3 space-y-2 bg-white/50 dark:bg-gray-900/30 rounded-lg p-4">
+                    {breakdown.industryMatch !== undefined && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span className="text-lg">🎯</span>
+                          Industry Expertise
+                        </span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">
+                          {breakdown.industryMatch}/100
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.availability !== undefined && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span className="text-lg">⚡</span>
+                          Availability
+                        </span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">
+                          {breakdown.availability}/100
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.conversionRate !== undefined && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span className="text-lg">📈</span>
+                          Conversion Rate
+                        </span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">
+                          {breakdown.conversionRate}/100
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.hotStreak !== undefined && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span className="text-lg">🔥</span>
+                          Hot Streak
+                        </span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">
+                          {breakdown.hotStreak}/100
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.responseSpeed !== undefined && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span className="text-lg">⏱️</span>
+                          Response Speed
+                        </span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">
+                          {breakdown.responseSpeed}/100
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.dealSize !== undefined && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span className="text-lg">💰</span>
+                          Deal Size History
+                        </span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">
+                          {breakdown.dealSize}/100
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.burnout !== undefined && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span className="text-lg">🧘</span>
+                          Burnout Level
+                        </span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">
+                          {breakdown.burnout}/100
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.recentPerformance !== undefined && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span className="text-lg">📊</span>
+                          Recent Performance
+                        </span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">
+                          {breakdown.recentPerformance}/100
+                        </span>
+                      </div>
+                    )}
+                    
+                    {matchScore != null && (
+                      <div className="mt-4 pt-3 border-t border-blue-200 dark:border-blue-700 flex justify-between items-center">
+                        <span className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                          💡 Weighted Average
+                        </span>
+                        <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                          {Math.round(matchScore)}/100
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Alternative Agents Section */}
+          {explainability?.alternatives && explainability.alternatives.length > 0 && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Alternative Agents
+              </h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Other agents who could handle this lead, ranked by match score
+              </p>
+              <div className="space-y-3">
+                {explainability.alternatives.map((alt: any, index: number) => (
+                  <div
+                    key={index}
+                    className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3 flex-1">
+                        {/* Rank Badge */}
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                          <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                            #{alt.rank}
+                          </span>
+                        </div>
+                        
+                        {/* Agent Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-gray-900 dark:text-white">
+                            {alt.agentName || alt.agentUserId}
+                          </div>
+                          {alt.summary && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                              {alt.summary}
+                            </p>
+                          )}
+                          {alt.agentUserId && alt.agentName && (
+                            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1 font-mono">
+                              ID: {alt.agentUserId}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Score */}
+                      <div className="flex-shrink-0 text-right ml-4">
+                        <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                          {alt.score}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Match Score
+                        </div>
+                        {alt.scoreDifference !== undefined && (
+                          <div className="text-xs text-red-600 dark:text-red-400 mt-1">
+                            -{alt.scoreDifference} pts
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Info Message */}
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-start gap-2">
+                <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  These agents are ranked by their match score based on {explainability.totalAgentsEvaluated || 'multiple'} factors including availability, expertise, and performance metrics.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Status Badge */}
           <div>
@@ -136,31 +375,31 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                  Board ID
+                  Board
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900 dark:text-white font-mono">
-                  {proposal.boardId}
+                <dd className="mt-1 text-sm text-gray-900 dark:text-white">
+                  {proposal.boardName || proposal.boardId}
                 </dd>
+                {proposal.boardName && (
+                  <dd className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 font-mono">
+                    ID: {proposal.boardId}
+                  </dd>
+                )}
               </div>
               <div>
                 <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                  Item ID
-                </dt>
-                <dd className="mt-1 text-sm text-gray-900 dark:text-white font-mono">
-                  {proposal.itemId}
-                </dd>
-              </div>
-            </div>
-            {proposal.itemName && (
-              <div className="mt-3">
-                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                  Item Name
+                  Item
                 </dt>
                 <dd className="mt-1 text-sm text-gray-900 dark:text-white">
-                  {proposal.itemName}
+                  {proposal.itemName || proposal.itemId}
                 </dd>
+                {proposal.itemName && (
+                  <dd className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 font-mono">
+                    ID: {proposal.itemId}
+                  </dd>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           {/* Routing Suggestion - Additional Details */}
