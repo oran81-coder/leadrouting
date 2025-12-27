@@ -7,10 +7,10 @@
 
 import { Router, Request, Response, NextFunction } from "express";
 import { PrismaClient } from "@prisma/client";
-import { PrismaOrganizationRepo } from "../../../packages/modules/organization/src";
+import { PrismaOrganizationRepo } from "../../../../packages/modules/organization/src/infrastructure/organization.repo";
 import { requireOrgContext } from "../middleware/orgContext";
-import { ValidationError, NotFoundError } from "../../../packages/core/src/shared/errors";
-import { log } from "../../../packages/core/src/shared/logger";
+import { ValidationError, NotFoundError } from "../../../../packages/core/src/shared/errors";
+import { log } from "../../../../packages/core/src/shared/logger";
 
 const router = Router();
 const prisma = new PrismaClient();

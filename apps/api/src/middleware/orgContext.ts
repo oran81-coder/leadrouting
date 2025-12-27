@@ -8,8 +8,8 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
-import { UnauthorizedError } from "../../../packages/core/src/shared/errors";
-import { log } from "../../../packages/core/src/shared/logger";
+import { UnauthorizedError } from "../../../../packages/core/src/shared/errors";
+import { log } from "../../../../packages/core/src/shared/logger";
 
 // Extend Express Request to include orgId
 declare global {
