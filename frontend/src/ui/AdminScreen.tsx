@@ -14,7 +14,6 @@ import {
 import { useToast } from "./hooks/useToast";
 import { InfoTooltip } from "./components/InfoTooltip";
 import { AgentAvailabilityManager } from "./AgentAvailabilityManager";
-import { OrganizationManager } from "./OrganizationManager";
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -914,11 +913,6 @@ export function AdminScreen() {
           )}
         </div>
       )}
-
-      {/* Organization Management */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
-        <OrganizationManager />
-      </div>
 
       {/* Agent Availability & Capacity Management */}
       <AgentAvailabilityManager />

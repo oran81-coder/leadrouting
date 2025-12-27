@@ -761,3 +761,270 @@ export async function activateOrganization(orgId: string): Promise<{
   );
 }
 
+// ============================================================================
+// Organization Registration (Monday OAuth)
+// ============================================================================
+
+export interface MondayOAuthUrlResponse {
+  success: boolean;
+  data: {
+    authUrl: string;
+    state: string;
+  };
+}
+
+export interface MondayCallbackResponse {
+  success: boolean;
+  data: {
+    organization: {
+      id: string;
+      name: string;
+      displayName: string;
+      email: string;
+    };
+    user: {
+      id: string;
+      email: string;
+      username: string;
+      role: string;
+      orgId: string;
+    };
+    tokens: {
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+    };
+    message: string;
+  };
+}
+
+/**
+ * Get Monday.com OAuth authorization URL
+ */
+export async function getMondayOAuthUrl(): Promise<MondayOAuthUrlResponse> {
+  return await http<MondayOAuthUrlResponse>("/auth/register-org/monday");
+}
+
+/**
+ * Complete Monday.com OAuth callback and create organization
+ */
+export async function registerOrgWithMonday(code: string, state?: string): Promise<MondayCallbackResponse> {
+  return await http<MondayCallbackResponse>("/auth/register-org/monday/callback", {
+    method: "POST",
+    body: JSON.stringify({ code, state }),
+  });
+}
+
+/**
+ * Check if Monday OAuth is configured
+ */
+export async function getMondayOAuthStatus(): Promise<{
+  success: boolean;
+  data: {
+    mondayOAuthConfigured: boolean;
+    redirectUri: string | null;
+  };
+}> {
+  return await http<{
+    success: boolean;
+    data: {
+      mondayOAuthConfigured: boolean;
+      redirectUri: string | null;
+    };
+  }>("/auth/register-org/status");
+}
+
+// ============================================================================
+// Super Admin API
+// ============================================================================
+
+export interface SystemStats {
+  organizations: {
+    total: number;
+    active: number;
+    inactive: number;
+  };
+  users: {
+    total: number;
+    active: number;
+    inactive: number;
+  };
+  proposals: number;
+  leads: number;
+  agents: number;
+}
+
+export interface SuperAdminUser {
+  id: string;
+  email: string;
+  username: string;
+  firstName: string | null;
+  lastName: string | null;
+  role: string;
+  orgId: string | null;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  organization: {
+    id: string;
+    name: string;
+    displayName: string;
+  } | null;
+}
+
+/**
+ * Get system-wide statistics (super admin only)
+ */
+export async function getSuperAdminStats(): Promise<{
+  ok: boolean;
+  data: SystemStats;
+}> {
+  return await http<{ ok: boolean; data: SystemStats }>("/super-admin/stats");
+}
+
+/**
+ * List all users across all organizations (super admin only)
+ */
+export async function listAllUsers(params?: {
+  orgId?: string;
+  role?: string;
+  isActive?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  ok: boolean;
+  data: SuperAdminUser[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
+}> {
+  const q = new URLSearchParams();
+  if (params?.orgId) q.set("orgId", params.orgId);
+  if (params?.role) q.set("role", params.role);
+  if (params?.isActive !== undefined) q.set("isActive", String(params.isActive));
+  if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.offset) q.set("offset", String(params.offset));
+
+  return await http<{
+    ok: boolean;
+    data: SuperAdminUser[];
+    pagination: {
+      total: number;
+      limit: number;
+      offset: number;
+    };
+  }>(`/super-admin/users?${q.toString()}`);
+}
+
+/**
+ * Super Admin - List all organizations
+ */
+export async function superAdminListOrganizations(params?: {
+  isActive?: boolean;
+  tier?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  ok: boolean;
+  data: Organization[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
+}> {
+  const q = new URLSearchParams();
+  if (params?.isActive !== undefined) q.set("isActive", String(params.isActive));
+  if (params?.tier) q.set("tier", params.tier);
+  if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.offset) q.set("offset", String(params.offset));
+
+  return await http<{
+    ok: boolean;
+    data: Organization[];
+    pagination: {
+      total: number;
+      limit: number;
+      offset: number;
+    };
+  }>(`/super-admin/organizations?${q.toString()}`);
+}
+
+/**
+ * Super Admin - Get organization by ID
+ */
+export async function superAdminGetOrganization(orgId: string): Promise<{
+  ok: boolean;
+  data: Organization;
+}> {
+  return await http<{ ok: boolean; data: Organization }>(`/super-admin/organizations/${orgId}`);
+}
+
+/**
+ * Super Admin - Get organization with stats
+ */
+export async function superAdminGetOrganizationStats(orgId: string): Promise<{
+  ok: boolean;
+  data: OrganizationStats;
+}> {
+  return await http<{ ok: boolean; data: OrganizationStats }>(`/super-admin/organizations/${orgId}/stats`);
+}
+
+/**
+ * Super Admin - Create organization
+ */
+export async function superAdminCreateOrganization(input: CreateOrganizationInput): Promise<{
+  ok: boolean;
+  data: Organization;
+}> {
+  return await http<{ ok: boolean; data: Organization }>("/super-admin/organizations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Super Admin - Update organization
+ */
+export async function superAdminUpdateOrganization(
+  orgId: string,
+  input: UpdateOrganizationInput
+): Promise<{
+  ok: boolean;
+  data: Organization;
+}> {
+  return await http<{ ok: boolean; data: Organization }>(`/super-admin/organizations/${orgId}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Super Admin - Delete organization
+ */
+export async function superAdminDeleteOrganization(orgId: string, hard = false): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  return await http<{ ok: boolean; message: string }>(
+    `/super-admin/organizations/${orgId}${hard ? "?hard=true" : ""}`,
+    { method: "DELETE" }
+  );
+}
+
+/**
+ * Super Admin - Activate organization
+ */
+export async function superAdminActivateOrganization(orgId: string): Promise<{
+  ok: boolean;
+  data: Organization;
+  message: string;
+}> {
+  return await http<{ ok: boolean; data: Organization; message: string }>(
+    `/super-admin/organizations/${orgId}/activate`,
+    { method: "POST" }
+  );
+}
+

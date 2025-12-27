@@ -23,7 +23,11 @@ import { useConfirm } from "./hooks/useConfirm";
 
 type OrganizationModalMode = "create" | "edit" | "view" | null;
 
-export function OrganizationManager() {
+interface OrganizationManagerProps {
+  isSuperAdmin?: boolean;
+}
+
+export function OrganizationManager({ isSuperAdmin = false }: OrganizationManagerProps) {
   const { showToast } = useToast();
   const { confirm } = useConfirm();
 
