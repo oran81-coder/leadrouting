@@ -10,6 +10,7 @@ import { healthRoutes } from "./health.routes";
 import { metricsRoutes } from "./metrics.routes";
 import { mondayPickerRoutes } from "./mondayPicker.routes";
 import authRoutes from "./auth.routes";
+import organizationRoutes from "./organization.routes";
 import { kpiWeightsRoutes } from "./kpiWeights.routes";
 import { routingCalculationRoutes } from "./routingCalculation.routes";
 import { agentProfileRoutes } from "./agentProfile.routes";
@@ -32,6 +33,9 @@ export function registerRoutes(app: Express) {
   app.use("/auth", authRoutes); // Authentication endpoints
   app.use("/webhooks", webhooksRoutes()); // Phase 2: Monday.com webhooks (verified by signature)
 
+  // Organization management (Admin/Super Admin only)
+  app.use("/organizations", requireApiKey, organizationRoutes);
+  
   app.use("/admin", requireApiKey, adminRoutes());
   console.log("[registerRoutes] mounted /admin");
 

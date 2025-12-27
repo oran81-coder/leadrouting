@@ -6,6 +6,7 @@ import { securityHeaders, sanitizeInput } from "./middleware/security";
 import { errorHandler } from "./middlewares/errorHandler";
 import { rateLimiters, rateLimitInfo } from "./middleware/rateLimit";
 import { metricsMiddleware } from "./middleware/metrics";
+import { orgContextMiddleware } from "./middleware/orgContext";
 
 export function createServer() {
   const app = express();
@@ -31,6 +32,10 @@ export function createServer() {
 
   // Input sanitization (after body parsing)
   app.use(sanitizeInput);
+
+  // Organization context extraction (after body parsing, before routes)
+  // This adds req.orgId to all requests
+  app.use(orgContextMiddleware);
 
   // Routes
   registerRoutes(app);

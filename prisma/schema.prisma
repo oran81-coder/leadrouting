@@ -7,6 +7,66 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================
+// Phase 7.3: Multi-Tenant - Organization
+// ============================================
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String?
+  
+  // Contact Information
+  email       String?
+  phone       String?
+  
+  // Configuration
+  isActive    Boolean  @default(true)
+  tier        String   @default("standard") // e.g., "free", "standard", "enterprise"
+  
+  // Monday.com Integration
+  mondayWorkspaceId String? // Monday.com workspace/account ID
+  
+  // Billing (for future use)
+  stripeCustomerId String?
+  subscriptionStatus String? // "active", "trial", "canceled", "past_due"
+  trialEndsAt      DateTime?
+  
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?  // User ID who created this org
+  
+  // Settings (JSON for flexibility)
+  settings    String   @default("{}") // JSON: custom org-level settings
+  
+  // Relations (reverse)
+  users                      User[]
+  internalSchemaVersions     InternalSchemaVersion[]
+  fieldMappingConfigVersions FieldMappingConfigVersion[]
+  auditLogs                  AuditLog[]
+  ruleSetVersions            RuleSetVersion[]
+  routingStates              RoutingState[]
+  routingSettings            RoutingSettings[]
+  routingProposals           RoutingProposal[]
+  routingApplies             RoutingApply[]
+  mondayUserCaches           MondayUserCache[]
+  mondayBoardCaches          MondayBoardCache[]
+  mondayCredentials          MondayCredential[]
+  industryWatchStates        IndustryWatchState[]
+  metricsConfigs             MetricsConfig[]
+  leadFacts                  LeadFact[]
+  agentMetricsSnapshots      AgentMetricsSnapshot[]
+  agentProfiles              AgentProfile[]
+  agentAvailabilities        AgentAvailability[]
+  capacitySettings           CapacitySettings[]
+  mondayWebhooks             MondayWebhook[]
+  
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([mondayWorkspaceId])
+}
+
 // Phase 1 persistence model (minimal, Cursor-friendly).
 // NOTE: SQLite connector does not support Prisma Json/enums in this setup.
 // All JSON payloads are stored as STRING containing JSON text.
@@ -19,6 +79,9 @@ model InternalSchemaVersion {
   createdAt DateTime @default(now())
   createdBy String?
 
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
   @@unique([orgId, version])
   @@index([orgId])
 }
@@ -30,6 +93,9 @@ model FieldMappingConfigVersion {
   payload   String // JSON string
   createdAt DateTime @default(now())
   createdBy String?
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, version])
   @@index([orgId])
@@ -46,6 +112,9 @@ model AuditLog {
   after       String? // JSON string
   createdAt   DateTime @default(now())
 
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
   @@index([orgId, createdAt])
   @@index([orgId, actorUserId, createdAt]) // Track user activities
   @@index([orgId, entityType, entityId]) // Fast entity lookups
@@ -59,6 +128,9 @@ model RuleSetVersion {
   payload   String // JSON string
   createdAt DateTime @default(now())
   createdBy String?
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, version])
   @@index([orgId])
@@ -75,6 +147,9 @@ model RoutingState {
   mappingVersion Int?
   rulesVersion   Int?
   updatedAt      DateTime  @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 }
 
 model RoutingSettings {
@@ -88,6 +163,9 @@ model RoutingSettings {
   kpiWeights String? // JSON: { workload, conversionHistorical, recentPerformance, responseTime, avgTimeToClose, avgDealSize, industryMatch, hotStreak }
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 }
 
 model RoutingProposal {
@@ -113,6 +191,9 @@ model RoutingProposal {
 
   createdAt DateTime @default(now())
 
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
   @@unique([orgId, idempotencyKey])
   @@index([orgId, status, createdAt])
   @@index([orgId, boardId, itemId])
@@ -126,6 +207,9 @@ model RoutingApply {
   proposalId String
   appliedAt  DateTime @default(now())
 
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
   @@unique([orgId, proposalId])
   @@index([orgId, appliedAt])
 }
@@ -137,6 +221,9 @@ model MondayUserCache {
   name      String
   email     String
   updatedAt DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, userId])
   @@index([orgId, email])
@@ -150,6 +237,9 @@ model MondayBoardCache {
   boardName String
   updatedAt DateTime @updatedAt
 
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
   @@unique([orgId, boardId])
   @@index([orgId, boardName])
 }
@@ -161,6 +251,9 @@ model MondayCredential {
   endpoint  String   @default("https://api.monday.com/v2")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 }
 
 model IndustryWatchState {
@@ -171,6 +264,9 @@ model IndustryWatchState {
   lastIndustry  String?
   lastCheckedAt DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, boardId, itemId])
   @@index([orgId, boardId])
@@ -247,6 +343,9 @@ model MetricsConfig {
   assignedPeopleColumnId String?
 
   updatedAt DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 }
 
 model LeadFact {
@@ -269,6 +368,9 @@ model LeadFact {
   closedWonAt    DateTime? // when status became closedWon
 
   updatedAt DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, boardId, itemId])
   @@index([orgId, boardId])
@@ -308,6 +410,9 @@ model AgentMetricsSnapshot {
   industryPerfJson String @default("{}") // json string
 
   updatedAt DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, agentUserId, windowDays])
   @@index([orgId, agentUserId])
@@ -359,6 +464,9 @@ model AgentProfile {
   computedAt            DateTime @default(now())
   dataWindowDays        Int      @default(90)
   updatedAt             DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   
   @@unique([orgId, agentUserId])
   @@index([orgId])
@@ -387,6 +495,9 @@ model AgentAvailability {
   updatedBy   String?  // Admin user ID who made the change
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   
   @@unique([orgId, agentUserId])
   @@index([orgId])
@@ -405,6 +516,9 @@ model CapacitySettings {
   updatedBy String?  // Admin user ID
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   
   @@index([orgId])
 }
@@ -429,7 +543,8 @@ model User {
   updatedAt    DateTime @updatedAt
 
   // Relations
-  sessions Session[]
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sessions     Session[]
 
   @@unique([orgId, username])
   @@unique([orgId, email])
@@ -475,6 +590,9 @@ model MondayWebhook {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, boardId, event])
   @@index([orgId])
