@@ -27,16 +27,27 @@ import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
 import { env } from "../config/env";
 
 /**
- * Phase 1 Admin routes (single-org, rule-based).
- * Auth handled upstream via requireApiKey.
+ * Phase 1 Admin routes (multi-org, rule-based).
+ * Auth handled upstream via requireApiKey + authenticateJWT + requireAdmin.
+ * All operations are scoped to the authenticated user's organization (req.user.orgId).
  */
 export function adminRoutes() {
   console.log("[adminRoutes] loaded");
 
   const r = Router();
 
-  const ORG_ID = "org_1";       // Phase 1: single org
-  const ACTOR_ID = "admin";     // Phase 1: static actor
+  // Helper to get orgId from authenticated user
+  function getOrgId(req: any): string {
+    if (!req.user?.orgId) {
+      throw new Error("Organization ID not found in request. User must be authenticated.");
+    }
+    return req.user.orgId;
+  }
+
+  // Helper to get userId from authenticated user
+  function getUserId(req: any): string {
+    return req.user?.id || "system";
+  }
 
   const schemaRepo = new PrismaInternalSchemaRepo();
   const mappingRepo = new PrismaFieldMappingConfigRepo();
@@ -74,18 +85,18 @@ export function adminRoutes() {
   // Schema + Mapping
   // -------------------------
   r.get("/schema/latest", async (_req, res) => {
-    const s = await schemaRepo.getLatest(ORG_ID);
+    const s = await schemaRepo.getLatest(getOrgId(req));
     return res.json({ ok: true, schema: s });
   });
 
   r.get("/mapping/latest", async (_req, res) => {
-    const m = await mappingRepo.getLatest(ORG_ID);
+    const m = await mappingRepo.getLatest(getOrgId(req));
     return res.json({ ok: true, mapping: m });
   });
 
   r.get("/validate", async (_req, res) => {
-    const s = await schemaRepo.getLatest(ORG_ID);
-    const m = await mappingRepo.getLatest(ORG_ID);
+    const s = await schemaRepo.getLatest(getOrgId(req));
+    const m = await mappingRepo.getLatest(getOrgId(req));
 
     if (!s || !m) {
       return res.status(400).json({
@@ -102,13 +113,13 @@ export function adminRoutes() {
 
   r.post("/schema", validateBody(InternalSchemaZ), async (req, res) => {
     const payload = req.body;
-    const before = await schemaRepo.getLatest(ORG_ID);
+    const before = await schemaRepo.getLatest(getOrgId(req));
 
-    const saved = await schemaRepo.saveNewVersion(ORG_ID, payload, ACTOR_ID);
+    const saved = await schemaRepo.saveNewVersion(getOrgId(req), payload, getUserId(req));
 
     await safeAudit({
-      orgId: ORG_ID,
-      actorUserId: ACTOR_ID,
+      orgId: getOrgId(req),
+      actorUserId: getUserId(req),
       action: "schema.saveNewVersion",
       entityType: "InternalSchema",
       entityId: String(saved.version),
@@ -121,13 +132,13 @@ export function adminRoutes() {
 
   r.post("/mapping", validateBody(FieldMappingConfigZ), async (req, res) => {
     const payload = req.body;
-    const before = await mappingRepo.getLatest(ORG_ID);
+    const before = await mappingRepo.getLatest(getOrgId(req));
 
-    const saved = await mappingRepo.saveNewVersion(ORG_ID, payload, ACTOR_ID);
+    const saved = await mappingRepo.saveNewVersion(getOrgId(req), payload, getUserId(req));
 
     await safeAudit({
-      orgId: ORG_ID,
-      actorUserId: ACTOR_ID,
+      orgId: getOrgId(req),
+      actorUserId: getUserId(req),
       action: "mapping.saveNewVersion",
       entityType: "FieldMappingConfig",
       entityId: String(saved.version),
@@ -142,19 +153,19 @@ export function adminRoutes() {
   // Rules (Phase 1 glue)
   // -------------------------
   r.get("/rules/latest", async (_req, res) => {
-    const latest = await rulesRepo.getLatest(ORG_ID);
+    const latest = await rulesRepo.getLatest(getOrgId(req));
     return res.json({ ok: true, rules: latest });
   });
 
   r.post("/rules", validateBody(RuleSetZ), async (req, res) => {
     const payload = req.body;
-    const before = await rulesRepo.getLatest(ORG_ID);
+    const before = await rulesRepo.getLatest(getOrgId(req));
 
-    const saved = await rulesRepo.saveNewVersion(ORG_ID, payload, ACTOR_ID);
+    const saved = await rulesRepo.saveNewVersion(getOrgId(req), payload, getUserId(req));
 
     await safeAudit({
-      orgId: ORG_ID,
-      actorUserId: ACTOR_ID,
+      orgId: getOrgId(req),
+      actorUserId: getUserId(req),
       action: "rules.saveNewVersion",
       entityType: "RuleSet",
       entityId: String(saved.version),
@@ -169,15 +180,15 @@ export function adminRoutes() {
   // Routing state (Phase 1 glue)
   // -------------------------
   r.get("/routing/state", async (_req, res) => {
-    const state = await routingStateRepo.get(ORG_ID);
-    const settings = await routingSettingsRepo.get(ORG_ID);
+    const state = await routingStateRepo.get(getOrgId(req));
+    const settings = await routingSettingsRepo.get(getOrgId(req));
     return res.json({ ok: true, state, settings });
   });
 
   r.post("/routing/enable", async (_req, res) => {
-    const s = await schemaRepo.getLatest(ORG_ID);
-    const m = await mappingRepo.getLatest(ORG_ID);
-    const r = await rulesRepo.getLatest(ORG_ID);
+    const s = await schemaRepo.getLatest(getOrgId(req));
+    const m = await mappingRepo.getLatest(getOrgId(req));
+    const r = await rulesRepo.getLatest(getOrgId(req));
 
     if (!s || !m) {
       return res.status(400).json({
@@ -197,25 +208,25 @@ export function adminRoutes() {
       });
     }
 
-    const before = await routingStateRepo.get(ORG_ID);
+    const before = await routingStateRepo.get(getOrgId(req));
     
     await routingStateRepo.setEnabled({
-      orgId: ORG_ID,
+      orgId: getOrgId(req),
       enabled: true,
-      enabledBy: ACTOR_ID,
+      enabledBy: getUserId(req),
       schemaVersion: (s as any).version,
       mappingVersion: (m as any).version,
       rulesVersion: r ? (r as any).version : null,
     });
 
-    const updated = await routingStateRepo.get(ORG_ID);
+    const updated = await routingStateRepo.get(getOrgId(req));
 
     await safeAudit({
-      orgId: ORG_ID,
-      actorUserId: ACTOR_ID,
+      orgId: getOrgId(req),
+      actorUserId: getUserId(req),
       action: "routing.enable",
       entityType: "RoutingState",
-      entityId: ORG_ID,
+      entityId: getOrgId(req),
       before,
       after: updated,
     });
@@ -224,21 +235,21 @@ export function adminRoutes() {
   });
 
   r.post("/routing/disable", async (_req, res) => {
-    const before = await routingStateRepo.get(ORG_ID);
+    const before = await routingStateRepo.get(getOrgId(req));
     
     await routingStateRepo.setEnabled({
-      orgId: ORG_ID,
+      orgId: getOrgId(req),
       enabled: false,
     });
 
-    const updated = await routingStateRepo.get(ORG_ID);
+    const updated = await routingStateRepo.get(getOrgId(req));
 
     await safeAudit({
-      orgId: ORG_ID,
-      actorUserId: ACTOR_ID,
+      orgId: getOrgId(req),
+      actorUserId: getUserId(req),
       action: "routing.disable",
       entityType: "RoutingState",
-      entityId: ORG_ID,
+      entityId: getOrgId(req),
       before,
       after: updated,
     });
@@ -250,7 +261,7 @@ export function adminRoutes() {
   // Routing Settings (Phase 1.4)
   // -------------------------
   r.get("/routing/settings", async (_req, res) => {
-    const settings = await routingSettingsRepo.get(ORG_ID);
+    const settings = await routingSettingsRepo.get(getOrgId(req));
     return res.json({ ok: true, mode: settings.mode });
   });
 
@@ -264,16 +275,16 @@ export function adminRoutes() {
       });
     }
 
-    const before = await routingSettingsRepo.get(ORG_ID);
-    await routingSettingsRepo.setMode(ORG_ID, mode as any);
-    const updated = await routingSettingsRepo.get(ORG_ID);
+    const before = await routingSettingsRepo.get(getOrgId(req));
+    await routingSettingsRepo.setMode(getOrgId(req), mode as any);
+    const updated = await routingSettingsRepo.get(getOrgId(req));
 
     await safeAudit({
-      orgId: ORG_ID,
-      actorUserId: ACTOR_ID,
+      orgId: getOrgId(req),
+      actorUserId: getUserId(req),
       action: "routing.settings.setMode",
       entityType: "RoutingSettings",
-      entityId: ORG_ID,
+      entityId: getOrgId(req),
       before: { mode: before.mode },
       after: { mode: updated.mode },
     });
@@ -285,15 +296,15 @@ export function adminRoutes() {
   // Monday (Phase 1)
   // -------------------------
   r.post("/monday/users/refresh", async (_req, res) => {
-    const client = await createMondayClientForOrg(ORG_ID);
-    const count = await refreshMondayUsersCache(client as any, ORG_ID);
+    const client = await createMondayClientForOrg(getOrgId(req));
+    const count = await refreshMondayUsersCache(client as any, getOrgId(req));
 
     await safeAudit({
-      orgId: ORG_ID,
-      actorUserId: ACTOR_ID,
+      orgId: getOrgId(req),
+      actorUserId: getUserId(req),
       action: "monday.users.refresh",
       entityType: "MondayUserCache",
-      entityId: ORG_ID,
+      entityId: getOrgId(req),
       before: null,
       after: { count },
     });
@@ -302,7 +313,7 @@ export function adminRoutes() {
   });
 
   r.get("/monday/status", async (_req, res) => {
-    const s = await credRepo.status(ORG_ID);
+    const s = await credRepo.status(getOrgId(req));
     return res.json({ ok: true, ...s });
   });
 
@@ -311,14 +322,14 @@ export function adminRoutes() {
     const endpoint = req.body?.endpoint ? String(req.body.endpoint).trim() : undefined;
     if (!token) return res.status(400).json({ ok: false, error: "Missing token" });
 
-    await credRepo.upsert(ORG_ID, { token, endpoint });
+    await credRepo.upsert(getOrgId(req), { token, endpoint });
 
     await safeAudit({
-      orgId: ORG_ID,
-      actorUserId: ACTOR_ID,
+      orgId: getOrgId(req),
+      actorUserId: getUserId(req),
       action: "monday.connect",
       entityType: "MondayCredential",
-      entityId: ORG_ID,
+      entityId: getOrgId(req),
       before: null,
       after: { endpoint: endpoint ?? "https://api.monday.com/v2" },
     });
@@ -331,7 +342,7 @@ export function adminRoutes() {
         console.log("[monday/connect] Registering webhook for real-time integration...");
         
         const client = createMondayClient({ token, endpoint });
-        const mappingConfig = await mappingRepo.getLatest(ORG_ID);
+        const mappingConfig = await mappingRepo.getLatest(getOrgId(req));
         
         if (mappingConfig?.primaryBoardId) {
           const webhookUrl = `${env.PUBLIC_URL}/webhooks/monday`;
@@ -341,7 +352,7 @@ export function adminRoutes() {
             boardId: mappingConfig.primaryBoardId,
             webhookUrl,
             event: "create_pulse",
-            orgId: ORG_ID,
+            orgId: getOrgId(req),
           });
           
           webhookStatus = {
@@ -365,12 +376,12 @@ export function adminRoutes() {
       }
     }
 
-    const s = await credRepo.status(ORG_ID);
+    const s = await credRepo.status(getOrgId(req));
     return res.json({ ok: true, ...s, webhook: webhookStatus });
   });
 
   r.post("/monday/test", async (_req, res) => {
-    const cred = await credRepo.get(ORG_ID);
+    const cred = await credRepo.get(getOrgId(req));
     if (!cred) return res.status(400).json({ ok: false, error: "Not connected" });
 
     const client = createMondayClient({ token: cred.token, endpoint: cred.endpoint });
@@ -381,7 +392,7 @@ export function adminRoutes() {
 
   r.get("/monday/users", async (_req, res) => {
     const userCacheRepo = new PrismaMondayUserCacheRepo();
-    const users = await userCacheRepo.list(ORG_ID);
+    const users = await userCacheRepo.list(getOrgId(req));
     return res.json({ 
       ok: true, 
       users: users.map(u => ({ 
@@ -402,17 +413,17 @@ export function adminRoutes() {
       const prisma = getPrisma();
 
       // Get total leads count
-      const totalLeads = await prisma.leadFact.count({ where: { orgId: ORG_ID } });
+      const totalLeads = await prisma.leadFact.count({ where: { orgId: getOrgId(req) } });
 
       // Get oldest and newest leads
       const oldestLead = await prisma.leadFact.findFirst({
-        where: { orgId: ORG_ID, enteredAt: { not: null } },
+        where: { orgId: getOrgId(req), enteredAt: { not: null } },
         orderBy: { enteredAt: 'asc' },
         select: { enteredAt: true, itemId: true, boardId: true },
       });
 
       const newestLead = await prisma.leadFact.findFirst({
-        where: { orgId: ORG_ID, enteredAt: { not: null } },
+        where: { orgId: getOrgId(req), enteredAt: { not: null } },
         orderBy: { enteredAt: 'desc' },
         select: { enteredAt: true, itemId: true, boardId: true },
       });
@@ -420,17 +431,17 @@ export function adminRoutes() {
       // Get leads by board
       const leadsByBoard = await prisma.leadFact.groupBy({
         by: ['boardId'],
-        where: { orgId: ORG_ID },
+        where: { orgId: getOrgId(req) },
         _count: { boardId: true },
       });
 
       // Get assigned vs unassigned
       const assignedCount = await prisma.leadFact.count({
-        where: { orgId: ORG_ID, assignedUserId: { not: null } },
+        where: { orgId: getOrgId(req), assignedUserId: { not: null } },
       });
 
       const closedWonCount = await prisma.leadFact.count({
-        where: { orgId: ORG_ID, closedWonAt: { not: null } },
+        where: { orgId: getOrgId(req), closedWonAt: { not: null } },
       });
 
       return res.json({
@@ -472,8 +483,8 @@ export function adminRoutes() {
       const result = await loadHistoricalLeads({ limitPerBoard, forceReload });
       
       await safeAudit({
-        orgId: ORG_ID,
-        actorUserId: ACTOR_ID,
+        orgId: getOrgId(req),
+        actorUserId: getUserId(req),
         action: "admin.load_history",
         entityType: "LeadFact",
         entityId: null,
@@ -501,7 +512,7 @@ export function adminRoutes() {
       console.log("[admin/compute-agent-profiles] Starting profile computation...");
       
       // Calculate all profiles
-      const profiles = await calculateAllAgentProfiles(ORG_ID);
+      const profiles = await calculateAllAgentProfiles(getOrgId(req));
       
       // Save to database
       const profileRepo = new PrismaAgentProfileRepo();
@@ -512,8 +523,8 @@ export function adminRoutes() {
       console.log(`[admin/compute-agent-profiles] Computed ${profiles.length} profiles`);
       
       await safeAudit({
-        orgId: ORG_ID,
-        actorUserId: ACTOR_ID,
+        orgId: getOrgId(req),
+        actorUserId: getUserId(req),
         action: "admin.compute_agent_profiles",
         entityType: "AgentProfile",
         entityId: null,
@@ -569,7 +580,7 @@ export function adminRoutes() {
       
       // Step 2: Compute agent profiles
       console.log("[admin/sync-metrics] Step 2/2: Computing agent profiles...");
-      const profiles = await calculateAllAgentProfiles(ORG_ID);
+      const profiles = await calculateAllAgentProfiles(getOrgId(req));
       const profileRepo = new PrismaAgentProfileRepo();
       await Promise.all(
         profiles.map(profile => profileRepo.upsert(profile))
@@ -596,8 +607,8 @@ export function adminRoutes() {
       };
       
       await safeAudit({
-        orgId: ORG_ID,
-        actorUserId: ACTOR_ID,
+        orgId: getOrgId(req),
+        actorUserId: getUserId(req),
         action: "admin.sync_metrics",
         entityType: "System",
         entityId: null,

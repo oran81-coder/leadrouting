@@ -529,12 +529,12 @@ model CapacitySettings {
 
 model User {
   id           String   @id @default(cuid())
-  orgId        String
+  orgId        String?  // Nullable for super_admin users
   username     String
-  email        String
+  email        String   @unique // Global unique for super_admin login
   passwordHash String
-  // role: 'admin' | 'manager' | 'agent'
-  role         String
+  // role: 'super_admin' | 'admin' | 'manager' | 'agent'
+  role         String   @default("agent")
   firstName    String?
   lastName     String?
   isActive     Boolean  @default(true)
@@ -543,7 +543,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   // Relations
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
   sessions     Session[]
 
   @@unique([orgId, username])
@@ -553,6 +553,7 @@ model User {
   @@index([orgId, role, isActive]) // Active users by role
   @@index([email]) // Global email lookup for login
   @@index([lastLoginAt]) // Track user activity
+  @@index([role]) // For super_admin queries
 }
 
 model Session {

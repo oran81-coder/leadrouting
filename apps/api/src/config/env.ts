@@ -21,6 +21,11 @@ const envSchema = z.object({
   MONDAY_API_VERSION: z.string().default("2024-10"),
   MONDAY_USE_MOCK: z.string().transform((val) => val === "true").default("false"),
   
+  // Monday.com OAuth (for organization registration)
+  MONDAY_OAUTH_CLIENT_ID: z.string().optional(),
+  MONDAY_OAUTH_CLIENT_SECRET: z.string().optional(),
+  MONDAY_OAUTH_REDIRECT_URI: z.string().url().optional(),
+  
   // Metrics Job Configuration
   METRICS_JOB_ENABLED: z.string().transform((val) => val === "true").default("true"),
   METRICS_JOB_INTERVAL_SECONDS: z.string().transform(Number).pipe(z.number().int().positive()).default("3600"),

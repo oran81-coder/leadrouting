@@ -140,6 +140,36 @@ export const requireAdmin = requireRole(["admin"]);
 export const requireManagerOrAdmin = requireRole(["admin", "manager"]);
 
 /**
+ * Convenience middleware: require super_admin role (system-wide management)
+ */
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
+  // Skip auth if AUTH_ENABLED is false
+  if (!env.AUTH_ENABLED) {
+    next();
+    return;
+  }
+
+  // User must be authenticated first
+  if (!req.user) {
+    next(new UnauthorizedError("Authentication required"));
+    return;
+  }
+
+  // Check if user is super_admin
+  if (req.user.role !== "super_admin") {
+    log.warn("Super admin access denied", {
+      userId: req.user.id,
+      userRole: req.user.role,
+    });
+    next(new ForbiddenError("Access denied. Super admin role required."));
+    return;
+  }
+
+  log.debug("Super admin authorized", { userId: req.user.id });
+  next();
+}
+
+/**
  * Convenience middleware: require any authenticated user
  */
 export const requireAuth = authenticateJWT;

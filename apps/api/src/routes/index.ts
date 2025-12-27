@@ -10,7 +10,9 @@ import { healthRoutes } from "./health.routes";
 import { metricsRoutes } from "./metrics.routes";
 import { mondayPickerRoutes } from "./mondayPicker.routes";
 import authRoutes from "./auth.routes";
+import orgRegistrationRoutes from "./org-registration.routes";
 import organizationRoutes from "./organization.routes";
+import superAdminRoutes from "./super-admin.routes";
 import { kpiWeightsRoutes } from "./kpiWeights.routes";
 import { routingCalculationRoutes } from "./routingCalculation.routes";
 import { agentProfileRoutes } from "./agentProfile.routes";
@@ -19,6 +21,7 @@ import availabilityRoutes from "./availability.routes";
 
 import { requireApiKey } from "../middleware/authApiKey";
 import { requireMondayConnected } from "../middleware/requireMondayConnected";
+import { authenticateJWT, requireAdmin } from "../middleware/auth";
 
 // module routes (placeholders)
 import { fieldMappingRoutes } from "../../../../packages/modules/field-mapping/src/api/mapping.routes";
@@ -31,12 +34,17 @@ export function registerRoutes(app: Express) {
   // Public routes (no API key required)
   app.use("/health", healthRoutes());
   app.use("/auth", authRoutes); // Authentication endpoints
+  app.use("/auth/register-org", orgRegistrationRoutes); // Organization registration (public)
   app.use("/webhooks", webhooksRoutes()); // Phase 2: Monday.com webhooks (verified by signature)
+
+  // Super Admin routes (requires super_admin role)
+  app.use("/super-admin", superAdminRoutes);
 
   // Organization management (Admin/Super Admin only)
   app.use("/organizations", requireApiKey, organizationRoutes);
   
-  app.use("/admin", requireApiKey, adminRoutes());
+  // Admin routes (require authentication and admin role within organization)
+  app.use("/admin", requireApiKey, authenticateJWT, requireAdmin, adminRoutes());
   console.log("[registerRoutes] mounted /admin");
 
   app.use("/routing-calc", requireApiKey, routingCalculationRoutes()); // Phase 2: renamed to avoid conflict
