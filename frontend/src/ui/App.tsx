@@ -21,6 +21,9 @@ import {
   previewRouting,
 } from "./api";
 import { ThemeProvider, useTheme } from "./ThemeContext";
+import { AuthProvider, useAuth } from "./AuthContext";
+import { NavigationProvider } from "./NavigationContext";
+import { ToastProvider } from "./hooks/useToast";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { CardSkeleton } from "./CardSkeleton";
 import ErrorBoundary from "./ErrorBoundary";
@@ -33,6 +36,7 @@ const FieldMappingWizard = lazy(() => import("./FieldMappingWizard").then(m => (
 const PerformanceDashboard = lazy(() => import("./PerformanceDashboard").then(m => ({ default: m.PerformanceDashboard })));
 const SuperAdminDashboard = lazy(() => import("./SuperAdminDashboard").then(m => ({ default: m.SuperAdminDashboard })));
 const OrgRegistrationPage = lazy(() => import("./OrgRegistrationPage").then(m => ({ default: m.OrgRegistrationPage })));
+const LoginScreen = lazy(() => import("./LoginScreen").then(m => ({ default: m.LoginScreen })));
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -61,6 +65,33 @@ function ThemeToggleButton() {
     >
       {theme === "light" ? "🌙" : "☀️"}
       {theme === "light" ? "Dark" : "Light"}
+    </button>
+  );
+}
+
+function LogoutButton() {
+  const { logout, user } = useAuth();
+  const { theme } = useTheme();
+
+  if (!user) return null;
+
+  return (
+    <button
+      onClick={logout}
+      style={{
+        padding: "8px 12px",
+        borderRadius: "6px",
+        border: "1px solid #ddd",
+        background: theme === "dark" ? "#374151" : "#fff",
+        color: theme === "dark" ? "#fff" : "#000",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+      }}
+      title={`Logged in as ${user.email}`}
+    >
+      🚪 Logout
     </button>
   );
 }
@@ -731,6 +762,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
 }
 
 export default function App() {
+  const { user } = useAuth(); // Get current user for role-based features
   const [view, setView] = useState<"manager" | "admin" | "outcomes" | "mapping" | "performance" | "super-admin" | "register">("admin");
 
   // global connection settings
@@ -828,6 +860,26 @@ export default function App() {
     if (view === "admin") refreshAdmin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, statusFilter]);
+
+  // Load Monday status on mount and periodically
+  useEffect(() => {
+    async function loadMondayStatus() {
+      try {
+        const status = await adminMondayStatus();
+        setMondayStatus(status);
+      } catch (e) {
+        console.error("Error loading Monday status:", e);
+      }
+    }
+    
+    // Load immediately
+    loadMondayStatus();
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(loadMondayStatus, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   function getMissingMetricsFields(cfg: MetricsConfigDTO | null): string[] {
     if (!cfg) return [];
@@ -954,18 +1006,19 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
   }
 
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button 
-          onClick={() => setView("admin")} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            view === "admin" 
-              ? "bg-blue-600 text-white" 
-              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
-        >
-          Admin
-        </button>
+    <NavigationProvider setView={setView}>
+      <div style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <button 
+            onClick={() => setView("admin")} 
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              view === "admin" 
+                ? "bg-blue-600 text-white" 
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+          >
+            Admin
+          </button>
         <button 
           onClick={() => setView("manager")} 
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -1006,28 +1059,46 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         >
           📊 Performance
         </button>
-        <button 
-          onClick={() => setView("super-admin")} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            view === "super-admin" 
-              ? "bg-blue-600 text-white" 
-              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
-        >
-          👑 Super Admin
-        </button>
-        <button 
-          onClick={() => setView("register")} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            view === "register" 
-              ? "bg-blue-600 text-white" 
-              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
-        >
-          📝 Register Org
-        </button>
+        
+        {/* Super Admin button - only visible to super_admin users */}
+        {user && user.role === "super_admin" && (
+          <button 
+            onClick={() => setView("super-admin")} 
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              view === "super-admin" 
+                ? "bg-blue-600 text-white" 
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+          >
+            👑 Super Admin
+          </button>
+        )}
 
         <ThemeToggleButton />
+        <LogoutButton />
+
+        {/* Monday Connection Status Indicator */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+          <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+            Monday:
+          </span>
+          {mondayStatus ? (
+            mondayStatus.connected ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                ✓ Connected
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                ✗ Not Connected
+              </span>
+            )
+          ) : (
+            <span className="text-xs text-gray-500 dark:text-gray-400 animate-pulse">Loading...</span>
+          )}
+        </div>
 
         <div style={{ width: 1, height: 18, background: "#ddd", margin: "0 8px" }} />
 
@@ -1455,7 +1526,8 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         </div>
       ) : null}
       END OF OLD ADMIN CODE */}
-    </div>
+      </div>
+    </NavigationProvider>
   );
 }
 

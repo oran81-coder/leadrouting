@@ -4,7 +4,13 @@ import { PrismaMetricsConfigRepo } from "../infrastructure/metricsConfig.repo";
 import { PrismaMondayUserCacheRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayUserCache.repo";
 import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
 
-const ORG_ID = "org_1";
+/**
+ * Helper to get orgId from request (set by orgContext middleware)
+ * Falls back to org_1 for backward compatibility
+ */
+function getOrgId(req: any): string {
+  return req.orgId || req.user?.orgId || "org_1";
+}
 
 /**
  * Outcomes routes - Performance metrics and analytics
@@ -125,14 +131,14 @@ export function outcomesRoutes() {
       }
 
       // Get user names from cache
-      const cachedUsers = await userCacheRepo.list(ORG_ID);
+      const cachedUsers = await userCacheRepo.list(getOrgId(req));
       const userMap = new Map<string, string>();
       for (const user of cachedUsers) {
         userMap.set(user.userId, user.name);
       }
 
       // Get agent profiles for additional metrics
-      const agentProfiles = await agentProfileRepo.listByOrg(ORG_ID);
+      const agentProfiles = await agentProfileRepo.listByOrg(getOrgId(req));
       const profileMap = new Map(agentProfiles.map(p => [p.agentUserId, p]));
 
       // Build perAgent array

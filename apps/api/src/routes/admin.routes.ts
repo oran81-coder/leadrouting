@@ -89,17 +89,17 @@ export function adminRoutes() {
   // -------------------------
   // Schema + Mapping
   // -------------------------
-  r.get("/schema/latest", async (_req, res) => {
+  r.get("/schema/latest", async (req, res) => {
     const s = await schemaRepo.getLatest(getOrgId(req));
     return res.json({ ok: true, schema: s });
   });
 
-  r.get("/mapping/latest", async (_req, res) => {
+  r.get("/mapping/latest", async (req, res) => {
     const m = await mappingRepo.getLatest(getOrgId(req));
     return res.json({ ok: true, mapping: m });
   });
 
-  r.get("/validate", async (_req, res) => {
+  r.get("/validate", async (req, res) => {
     const s = await schemaRepo.getLatest(getOrgId(req));
     const m = await mappingRepo.getLatest(getOrgId(req));
 
@@ -157,7 +157,7 @@ export function adminRoutes() {
   // -------------------------
   // Rules (Phase 1 glue)
   // -------------------------
-  r.get("/rules/latest", async (_req, res) => {
+  r.get("/rules/latest", async (req, res) => {
     const latest = await rulesRepo.getLatest(getOrgId(req));
     return res.json({ ok: true, rules: latest });
   });
@@ -184,13 +184,13 @@ export function adminRoutes() {
   // -------------------------
   // Routing state (Phase 1 glue)
   // -------------------------
-  r.get("/routing/state", async (_req, res) => {
+  r.get("/routing/state", async (req, res) => {
     const state = await routingStateRepo.get(getOrgId(req));
     const settings = await routingSettingsRepo.get(getOrgId(req));
     return res.json({ ok: true, state, settings });
   });
 
-  r.post("/routing/enable", async (_req, res) => {
+  r.post("/routing/enable", async (req, res) => {
     const s = await schemaRepo.getLatest(getOrgId(req));
     const m = await mappingRepo.getLatest(getOrgId(req));
     const r = await rulesRepo.getLatest(getOrgId(req));
@@ -239,7 +239,7 @@ export function adminRoutes() {
     return res.json({ ok: true, enabled: true, state: updated });
   });
 
-  r.post("/routing/disable", async (_req, res) => {
+  r.post("/routing/disable", async (req, res) => {
     const before = await routingStateRepo.get(getOrgId(req));
     
     await routingStateRepo.setEnabled({
@@ -265,7 +265,7 @@ export function adminRoutes() {
   // -------------------------
   // Routing Settings (Phase 1.4)
   // -------------------------
-  r.get("/routing/settings", async (_req, res) => {
+  r.get("/routing/settings", async (req, res) => {
     const settings = await routingSettingsRepo.get(getOrgId(req));
     return res.json({ ok: true, mode: settings.mode });
   });
@@ -300,7 +300,7 @@ export function adminRoutes() {
   // -------------------------
   // Monday (Phase 1)
   // -------------------------
-  r.post("/monday/users/refresh", async (_req, res) => {
+  r.post("/monday/users/refresh", async (req, res) => {
     const client = await createMondayClientForOrg(getOrgId(req));
     const count = await refreshMondayUsersCache(client as any, getOrgId(req));
 
@@ -317,9 +317,37 @@ export function adminRoutes() {
     return res.json({ ok: true, count });
   });
 
-  r.get("/monday/status", async (_req, res) => {
+  r.get("/monday/status", async (req, res) => {
     const s = await credRepo.status(getOrgId(req));
     return res.json({ ok: true, ...s });
+  });
+
+  // Get list of Monday.com boards
+  r.get("/monday/boards", async (req, res) => {
+    try {
+      const cli = await createMondayClientForOrg(getOrgId(req));
+      if (!cli) {
+        return res.status(503).json({ 
+          ok: false, 
+          error: "Monday.com not connected for this organization" 
+        });
+      }
+
+      const boards = await cli.fetchBoards();
+      return res.json({ 
+        ok: true, 
+        boards: boards.map(b => ({
+          id: b.id,
+          name: b.name
+        }))
+      });
+    } catch (error: any) {
+      console.error("Error fetching Monday boards:", error);
+      return res.status(500).json({ 
+        ok: false, 
+        error: error.message || "Failed to fetch boards" 
+      });
+    }
   });
 
   r.post("/monday/connect", async (req, res) => {
@@ -385,7 +413,7 @@ export function adminRoutes() {
     return res.json({ ok: true, ...s, webhook: webhookStatus });
   });
 
-  r.post("/monday/test", async (_req, res) => {
+  r.post("/monday/test", async (req, res) => {
     const cred = await credRepo.get(getOrgId(req));
     if (!cred) return res.status(400).json({ ok: false, error: "Not connected" });
 
@@ -395,7 +423,7 @@ export function adminRoutes() {
     return res.json({ ok: true, usersCount: Array.isArray(users) ? users.length : 0 });
   });
 
-  r.get("/monday/users", async (_req, res) => {
+  r.get("/monday/users", async (req, res) => {
     const userCacheRepo = new PrismaMondayUserCacheRepo();
     const users = await userCacheRepo.list(getOrgId(req));
     return res.json({ 
@@ -412,7 +440,7 @@ export function adminRoutes() {
    * GET /admin/sync-status
    * Get database sync status - how many leads, oldest/newest, etc.
    */
-  r.get("/sync-status", async (_req, res) => {
+  r.get("/sync-status", async (req, res) => {
     try {
       const { getPrisma } = await import("../../../../packages/core/src/db/prisma");
       const prisma = getPrisma();

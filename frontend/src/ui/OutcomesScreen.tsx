@@ -10,6 +10,8 @@ import { KPICardsSkeleton } from "./CardSkeleton";
 import { ChartSkeleton } from "./ChartSkeleton";
 import { TableSkeleton } from "./TableSkeleton";
 import { useDebounce } from "./hooks/useDebounce";
+import { MondayNotConnected } from "./MondayNotConnected";
+import { useMondayConnection } from "./hooks/useMondayConnection";
 
 type OutcomesScreenProps = {
   // Empty for Phase 1.7, can add role-based filtering later
@@ -20,6 +22,7 @@ type SortDirection = "asc" | "desc";
 
 export function OutcomesScreen(props: OutcomesScreenProps) {
   const { showToast } = useToast();
+  const { isConnected, loading: connectionLoading } = useMondayConnection();
   const [data, setData] = useState<OutcomesSummaryDTO | null>(null);
   const [previousData, setPreviousData] = useState<OutcomesSummaryDTO | null>(null);
   const [loading, setLoading] = useState(false);
@@ -106,7 +109,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
     
     // Filter by search query (debounced for performance)
     let filtered = data.perAgent.filter((agent) =>
-      agent.agentName.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
+      agent && agent.agentName && agent.agentName.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
     );
     
     // Filter by industry (Phase 2.3)
@@ -169,6 +172,15 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, sortField, sortDirection, itemsPerPage]);
+
+  // Show Monday not connected message if not connected (after all hooks)
+  if (connectionLoading) {
+    return <KPICardsSkeleton />;
+  }
+
+  if (isConnected === false) {
+    return <MondayNotConnected pageName="Outcomes" />;
+  }
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -639,8 +651,8 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
               />
               <AgentsPieChart
                 data={{
-                  labels: data.perAgent.slice(0, 5).map((a) => a.agentName),
-                  values: data.perAgent.slice(0, 5).map((a) => a.closedWon),
+                  labels: data.perAgent.filter(a => a && a.agentName).slice(0, 5).map((a) => a.agentName),
+                  values: data.perAgent.filter(a => a && a.agentName).slice(0, 5).map((a) => a.closedWon),
                 }}
               />
             </div>
@@ -704,8 +716,10 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
               <div className="space-y-4">
                 {/* Top Performer */}
                 {(() => {
-                  const topPerformer = [...data.perAgent].sort((a, b) => b.conversionRate - a.conversionRate)[0];
-                  return (
+                  const topPerformer = [...data.perAgent]
+                    .filter(a => a && a.agentName)
+                    .sort((a, b) => b.conversionRate - a.conversionRate)[0];
+                  return topPerformer ? (
                     <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                       <div className="text-sm font-medium text-green-800 dark:text-green-200 mb-1">
                         🏆 Top Performer
@@ -717,13 +731,17 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                         {(topPerformer.conversionRate * 100).toFixed(1)}% conversion
                       </div>
                     </div>
+                  ) : (
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <div className="text-sm text-gray-500">No agent data available</div>
+                    </div>
                   );
                 })()}
 
                 {/* Top Revenue Generator */}
                 {(() => {
                   const topRevenue = [...data.perAgent]
-                    .filter((a) => a.revenue !== null && a.revenue > 0)
+                    .filter((a) => a && a.agentName && a.revenue !== null && a.revenue > 0)
                     .sort((a, b) => (b.revenue || 0) - (a.revenue || 0))[0];
                   
                   return (
@@ -744,7 +762,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                 {/* Fastest Closer */}
                 {(() => {
                   const fastestCloser = [...data.perAgent]
-                    .filter((a) => a.medianTimeToCloseDays !== null)
+                    .filter((a) => a && a.agentName && a.medianTimeToCloseDays !== null)
                     .sort((a, b) => (a.medianTimeToCloseDays || Infinity) - (b.medianTimeToCloseDays || Infinity))[0];
                   
                   return (
@@ -764,8 +782,10 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
 
                 {/* Most Active */}
                 {(() => {
-                  const mostActive = [...data.perAgent].sort((a, b) => b.assigned - a.assigned)[0];
-                  return (
+                  const mostActive = [...data.perAgent]
+                    .filter(a => a && a.agentName)
+                    .sort((a, b) => b.assigned - a.assigned)[0];
+                  return mostActive ? (
                     <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
                       <div className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-1">
                         🔥 Most Active
@@ -776,6 +796,10 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                       <div className="text-sm text-gray-600 dark:text-gray-400">
                         {mostActive.assigned} deals assigned
                       </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <div className="text-sm text-gray-500">No agent data available</div>
                     </div>
                   );
                 })()}

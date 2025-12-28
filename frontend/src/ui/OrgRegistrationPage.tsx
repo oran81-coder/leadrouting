@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useTheme } from "./ThemeContext";
-import { getMondayOAuthUrl, registerOrgWithMonday, getMondayOAuthStatus } from "./api";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "./AuthContext";
+import { getMondayOAuthRegisterUrl, registerOrgWithMonday, getMondayOAuthStatus } from "./api";
 
 /**
  * Organization Registration Page
@@ -10,9 +8,6 @@ import { useAuth } from "./AuthContext";
  */
 export function OrgRegistrationPage() {
   const { theme } = useTheme();
-  const { login } = useAuth();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const isDark = theme === "dark";
 
   const [loading, setLoading] = useState(false);
@@ -20,21 +15,42 @@ export function OrgRegistrationPage() {
   const [success, setSuccess] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [checkingConfig, setCheckingConfig] = useState(true);
+  const callbackProcessedRef = useRef(false); // Use ref instead of state
 
   // Check if OAuth is configured
   useEffect(() => {
     checkOAuthConfig();
   }, []);
 
-  // Handle OAuth callback
+  // Handle OAuth callback on mount - ONLY ONCE
   useEffect(() => {
-    const code = searchParams.get("code");
-    const state = searchParams.get("state");
+    if (callbackProcessedRef.current) return; // Already processed
 
-    if (code) {
+    // Extract query params from both hash and regular URL
+    const hash = window.location.hash;
+    const queryStart = hash.indexOf('?');
+    const hashQueryString = queryStart !== -1 ? hash.substring(queryStart + 1) : '';
+    const hashParams = new URLSearchParams(hashQueryString);
+    
+    // Also check regular query params
+    const regularParams = new URLSearchParams(window.location.search);
+    
+    // Prioritize regular params
+    const code = regularParams.get("code") || hashParams.get("code");
+    const state = regularParams.get("state") || hashParams.get("state");
+
+    console.log('[OrgRegistrationPage] Parsed URL params:', {
+      hasRegularCode: regularParams.has('code'),
+      hasHashCode: hashParams.has('code'),
+      code: code?.substring(0, 10) + '...',
+      state
+    });
+
+    if (code && !callbackProcessedRef.current) {
+      callbackProcessedRef.current = true;
       handleOAuthCallback(code, state || undefined);
     }
-  }, [searchParams]);
+  }, []); // Empty deps to run only once
 
   async function checkOAuthConfig() {
     try {
@@ -53,7 +69,7 @@ export function OrgRegistrationPage() {
     setError(null);
 
     try {
-      const response = await getMondayOAuthUrl();
+      const response = await getMondayOAuthRegisterUrl();
       // Redirect to Monday.com OAuth page
       window.location.href = response.data.authUrl;
     } catch (err) {
@@ -72,12 +88,16 @@ export function OrgRegistrationPage() {
       // Store tokens in localStorage
       localStorage.setItem("lead_routing_access_token", response.data.tokens.accessToken);
       localStorage.setItem("lead_routing_refresh_token", response.data.tokens.refreshToken);
+      
+      // Also store user data
+      localStorage.setItem("lead_routing_user", JSON.stringify(response.data.user));
 
       setSuccess(true);
       
-      // Wait a moment to show success message, then redirect to admin
+      // Wait a moment to show success message, then redirect to home
       setTimeout(() => {
-        navigate("/admin");
+        // Full navigation to home (not just hash change or reload)
+        window.location.href = window.location.origin + '/';
       }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete registration");
@@ -138,12 +158,6 @@ export function OrgRegistrationPage() {
             >
               The administrator needs to configure Monday.com OAuth credentials before you can register a new organization.
             </p>
-            <button
-              onClick={() => navigate("/login")}
-              className="mt-6 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
-            >
-              Go to Login
-            </button>
           </div>
         </div>
       </div>
@@ -271,13 +285,7 @@ export function OrgRegistrationPage() {
                 isDark ? "text-gray-400" : "text-gray-600"
               }`}
             >
-              Already have an account?{" "}
-              <button
-                onClick={() => navigate("/login")}
-                className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500"
-              >
-                Sign in
-              </button>
+              Already have an account? Contact your organization admin.
             </p>
           </div>
         </div>
@@ -296,6 +304,23 @@ export function OrgRegistrationPage() {
             <strong>What happens next?</strong>
             <br />
             You'll be redirected to Monday.com to authorize the connection. Once authorized, we'll create your organization and you'll be logged in as the admin.
+          </p>
+        </div>
+
+        {/* Back to Login Link */}
+        <div className="text-center mt-6">
+          <p
+            className={`text-sm ${
+              isDark ? "text-gray-400" : "text-gray-600"
+            }`}
+          >
+            Already have an account?{" "}
+            <a
+              href="/#"
+              className="font-medium text-blue-600 hover:text-blue-500"
+            >
+              Back to Login
+            </a>
           </p>
         </div>
       </div>

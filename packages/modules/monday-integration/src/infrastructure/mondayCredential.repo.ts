@@ -12,7 +12,15 @@ export class PrismaMondayCredentialRepo {
   async upsert(orgId: string, args: { token: string; endpoint?: string }): Promise<void> {
     const prisma = getPrisma();
     const endpoint = args.endpoint && args.endpoint.trim() ? args.endpoint.trim() : "https://api.monday.com/v2";
-    const tokenEnc = seal(String(args.token ?? "").trim());
+    const token = String(args.token ?? "").trim();
+    
+    // If token is empty, delete the credential instead of storing empty token
+    if (!token || token.length === 0) {
+      await prisma.mondayCredential.deleteMany({ where: { orgId } });
+      return;
+    }
+    
+    const tokenEnc = seal(token);
 
     await prisma.mondayCredential.upsert({
       where: { orgId },
@@ -38,6 +46,18 @@ export class PrismaMondayCredentialRepo {
     const prisma = getPrisma();
     const row = await prisma.mondayCredential.findUnique({ where: { orgId } });
     if (!row) return { connected: false };
+    
+    // Check if token is actually present and not empty
+    try {
+      const token = openSealed(row.tokenEnc);
+      if (!token || token.trim().length === 0) {
+        return { connected: false };
+      }
+    } catch (err) {
+      // If decryption fails, token is invalid
+      return { connected: false };
+    }
+    
     return { connected: true, endpoint: row.endpoint, updatedAt: row.updatedAt.toISOString() };
   }
 }

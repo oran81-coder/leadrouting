@@ -18,8 +18,7 @@ const authService = createAuthService({
  */
 const loginSchema = z.object({
   email: z.string().email("Invalid email format"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  orgId: z.string().min(1, "Organization ID is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 const registerSchema = z.object({
@@ -184,13 +183,45 @@ router.get("/me", authenticate, async (req: AuthenticatedRequest, res: Response)
       return;
     }
 
+    // Fetch full user data from database
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        role: true,
+        orgId: true,
+        firstName: true,
+        lastName: true,
+        isActive: true,
+        lastLoginAt: true,
+      },
+    });
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+      return;
+    }
+
     res.json({
       success: true,
       data: {
-        userId: req.user.userId,
-        email: req.user.email,
-        role: req.user.role,
-        orgId: req.user.orgId,
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          role: user.role,
+          orgId: user.orgId,
+          firstName: user.firstName || undefined,
+          lastName: user.lastName || undefined,
+          isActive: user.isActive,
+          lastLoginAt: user.lastLoginAt?.toISOString(),
+        },
       },
     });
   } catch (error) {

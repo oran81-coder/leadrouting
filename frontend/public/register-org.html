@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Completing Registration...</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .loader {
+      text-align: center;
+      color: white;
+    }
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    p {
+      margin: 0;
+      opacity: 0.9;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="loader">
+    <div class="spinner"></div>
+    <h2>Processing Authorization...</h2>
+    <p>Please wait while we complete your registration</p>
+  </div>
+  
+  <script>
+    // Simple redirect - pass everything to React app
+    // React will determine if it's login or register based on state parameter
+    const currentUrl = new URL(window.location.href);
+    const params = currentUrl.searchParams;
+    
+    // Get all params
+    const code = params.get('code');
+    const state = params.get('state');
+    const error = params.get('error');
+    const errorDescription = params.get('error_description');
+    
+    // Debug logging
+    console.log('=== OAuth Redirect Handler (register-org.html) ===');
+    console.log('State:', state);
+    console.log('Code:', code ? code.substring(0, 10) + '...' : null);
+    
+    // Build query string
+    let queryString = '';
+    if (code || error) {
+      const queryParams = new URLSearchParams();
+      if (code) queryParams.set('code', code);
+      if (state) queryParams.set('state', state);
+      if (error) queryParams.set('error', error);
+      if (errorDescription) queryParams.set('error_description', errorDescription);
+      queryString = '?' + queryParams.toString();
+    }
+    
+    // Determine if this is a login or register callback based on state
+    const isLoginCallback = state && state.startsWith('login');
+    
+    // Redirect to appropriate hash route
+    // IMPORTANT: Always use hash (even if empty) so AppWithAuth detects the change
+    // For login: redirect to /# with query params (empty hash)
+    // For register: redirect to /#register with query params
+    let newUrl;
+    if (isLoginCallback) {
+      // Use /# (with empty hash) so AppWithAuth's hashchange listener triggers
+      newUrl = window.location.origin + '/#' + queryString;
+    } else {
+      newUrl = window.location.origin + '/#register' + queryString;
+    }
+    
+    console.log('→ Is Login Callback:', isLoginCallback);
+    console.log('→ Redirecting to:', newUrl);
+    
+    // Redirect immediately
+    window.location.replace(newUrl);
+  </script>
+</body>
+</html>
+

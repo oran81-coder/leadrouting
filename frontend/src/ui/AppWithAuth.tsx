@@ -1,107 +1,128 @@
-import React from "react";
-import { useAuth } from "./AuthContext";
+/**
+ * AppWithAuth - Wrapper component that handles authentication
+ */
+import React, { lazy, Suspense } from "react";
+import { ThemeProvider } from "./ThemeContext";
+import { AuthProvider, useAuth } from "./AuthContext";
+import { ToastProvider } from "./ToastContext";
 import { LoginScreen } from "./LoginScreen";
-import { useTheme } from "./ThemeContext";
+import { LoginCallbackHandler } from "./LoginCallbackHandler";
 
-// ============================================================================
-// AppWithAuth - Wrapper that handles authentication
-// ============================================================================
+const OrgRegistrationPage = lazy(() => import("./OrgRegistrationPage").then(m => ({ default: m.OrgRegistrationPage })));
 
 interface AppWithAuthProps {
   children: React.ReactNode;
 }
 
-export function AppWithAuth({ children }: AppWithAuthProps) {
-  const { isAuthenticated, isLoading, user, logout } = useAuth();
-  const { theme } = useTheme();
+// Check if auth is enabled from environment (default: TRUE - Login required)
+const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED !== "false";
 
-  // Check if auth is enabled
-  const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
+/**
+ * Protected component - shows content only if authenticated (when AUTH is enabled)
+ */
+function ProtectedContent({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const [currentHash, setCurrentHash] = React.useState(window.location.hash);
 
-  // If auth is disabled, render app directly
+  // Listen to hash changes
+  React.useEffect(() => {
+    const handleHashChange = () => {
+      setCurrentHash(window.location.hash);
+    };
+    
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  // Parse hash and query params
+  // Check both hash query params (/#?code=...) AND regular query params (/?code=...)
+  const hashPart = currentHash.split('?')[0]; // Get part before query params
+  const hashQueryPart = currentHash.includes('?') ? currentHash.split('?')[1] : '';
+  const hashParams = new URLSearchParams(hashQueryPart);
+  
+  // Also check regular URL query params (not in hash)
+  const regularParams = new URLSearchParams(window.location.search);
+  
+  // Merge both sources (prioritize hash params for login callback)
+  const state = hashParams.get('state') || regularParams.get('state') || '';
+  const hasCode = hashParams.has('code') || regularParams.has('code');
+  
+  // Debug logging
+  console.log('[AppWithAuth] Parsing URL:', {
+    currentHash,
+    hashPart,
+    hasHashCode: hashParams.has('code'),
+    hasRegularCode: regularParams.has('code'),
+    state,
+    hasCode
+  });
+  
+  // IMPORTANT: Check login callback FIRST (before register check)
+  // If state starts with "login_", this is a login callback regardless of hash
+  const isLoginCallback = hasCode && state.startsWith('login');
+  
+  if (isLoginCallback) {
+    console.log('[AppWithAuth] ✅ Detected LOGIN callback (state:', state, ')');
+    console.log('[AppWithAuth] Showing LoginCallbackHandler');
+    return <LoginCallbackHandler />;
+  }
+  
+  // Check if we're on the registration page (public route)
+  const isRegisterPage = hashPart === '#register' || hashPart === '#register/';
+  
+  if (isRegisterPage) {
+    console.log('[AppWithAuth] Detected REGISTER page, showing OrgRegistrationPage');
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
+          </div>
+        </div>
+      }>
+        <OrgRegistrationPage />
+      </Suspense>
+    );
+  }
+
+  // If auth is disabled, show app directly
   if (!AUTH_ENABLED) {
     return <>{children}</>;
   }
 
-  // Show loading state while checking auth
+  // Show loading while checking auth status
   if (isLoading) {
-    return <LoadingScreen theme={theme} />;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
-  // Not authenticated - show login
+  // If not authenticated, show login screen
   if (!isAuthenticated) {
     return <LoginScreen />;
   }
 
-  // Authenticated - render app with user context
-  return (
-    <>
-      {/* User info bar at top */}
-      <div className={`px-4 py-2 border-b ${
-        theme === "dark"
-          ? "bg-gray-800 border-gray-700"
-          : "bg-white border-gray-200"
-      }`}>
-        <div className="flex justify-between items-center">
-          <div className={`text-sm ${
-            theme === "dark" ? "text-gray-300" : "text-gray-700"
-          }`}>
-            <span className="font-medium">{user?.firstName || user?.username}</span>
-            {user?.role && (
-              <span className={`ml-3 px-2 py-1 rounded text-xs font-medium ${
-                user.role === "admin"
-                  ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
-                  : user.role === "manager"
-                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-                  : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
-              }`}>
-                {user.role}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={logout}
-            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition ${
-              theme === "dark"
-                ? "bg-gray-700 hover:bg-gray-600 text-gray-200"
-                : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-            }`}
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-      {children}
-    </>
-  );
+  // User is authenticated, show app content
+  return <>{children}</>;
 }
 
-// ============================================================================
-// Loading Screen
-// ============================================================================
-
-function LoadingScreen({ theme }: { theme: string }) {
-  const isDark = theme === "dark";
-
+/**
+ * AppWithAuth - Wraps the app with all necessary providers and auth protection
+ */
+export function AppWithAuth({ children }: AppWithAuthProps) {
   return (
-    <div
-      className={`min-h-screen flex items-center justify-center ${
-        isDark ? "bg-gray-900" : "bg-gray-50"
-      }`}
-    >
-      <div className="text-center">
-        <div className="mx-auto h-16 w-16 flex items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-3xl font-bold shadow-lg animate-pulse">
-          LR
-        </div>
-        <p
-          className={`mt-4 text-sm ${
-            isDark ? "text-gray-400" : "text-gray-600"
-          }`}
-        >
-          Loading...
-        </p>
-      </div>
-    </div>
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <ProtectedContent>{children}</ProtectedContent>
+        </AuthProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
-

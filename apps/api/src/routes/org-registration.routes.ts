@@ -16,7 +16,7 @@ import { log } from "../../../../packages/core/src/shared/logger";
 const router = Router();
 const prisma = getPrisma();
 const authService = createAuthService({ prisma, bcryptRounds: env.BCRYPT_ROUNDS });
-const orgRepo = new PrismaOrganizationRepo();
+const orgRepo = new PrismaOrganizationRepo(prisma);
 const mondayCredRepo = new PrismaMondayCredentialRepo();
 
 /**
@@ -205,7 +205,10 @@ router.post("/monday/callback", async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    log.error("Error in Monday OAuth callback", { error });
+    log.error("Error in Monday OAuth callback", { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined 
+    });
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : "Failed to create organization",

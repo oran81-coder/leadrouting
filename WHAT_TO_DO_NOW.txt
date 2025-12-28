@@ -1,0 +1,69 @@
+==============================================
+  WHAT TO DO IN MONDAY.COM (Right Now)
+==============================================
+
+In the browser I just opened:
+
+STEP 1: Create App
+  - Click: "Create App" (blue button)
+  - Name: Lead Routing System
+  - Type: For my own account
+  - Click: Create
+
+STEP 2: Go to OAuth Section
+  - Left menu → Click "OAuth"
+
+STEP 3: Copy Credentials
+  - Copy: Client ID (long string)
+  - Copy: Client Secret (click "Show" button first)
+  
+  💡 TIP: Keep these in notepad temporarily
+
+STEP 4: Add Redirect URI
+  - Scroll to "Redirect URLs"
+  - Click: Add
+  - Enter: http://localhost:5173/register-org
+  - Click: Add (blue button)
+
+STEP 5: Enable Scopes
+  - Scroll to "Scopes"
+  - Check these 6 boxes:
+    ☑ me:read
+    ☑ account:read
+    ☑ boards:read
+    ☑ boards:write
+    ☑ users:read
+    ☑ workspaces:read
+
+STEP 6: Save
+  - Click: Save (at bottom of page)
+
+==============================================
+
+WHEN YOU'RE DONE:
+
+Come back here and run:
+  .\create-env.ps1
+
+It will ask for:
+  1. Client ID → paste what you copied
+  2. Client Secret → paste what you copied
+
+Then it will create .env file automatically!
+
+==============================================
+
+ALTERNATIVE: Manual Setup
+
+If you prefer:
+  1. Open: ENV_TEMPLATE.txt
+  2. Copy all content
+  3. Create new file: .env
+  4. Paste content
+  5. Replace YOUR_CLIENT_ID_HERE with your Client ID
+  6. Replace YOUR_CLIENT_SECRET_HERE with your Secret
+  7. Save file
+  8. Restart server: npm run dev
+
+==============================================
+

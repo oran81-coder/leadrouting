@@ -15,6 +15,22 @@ import { PrismaAuditRepo } from "../../../../packages/modules/audit-logging/src/
 const logger = createModuleLogger('ManagerRoutes');
 
 /**
+ * Helper to get orgId from request (set by orgContext middleware)
+ * Falls back to org_1 for backward compatibility
+ */
+function getOrgId(req: any): string {
+  return req.orgId || req.user?.orgId || "org_1";
+}
+
+/**
+ * Helper to get userId from request (set by auth middleware)
+ * Falls back to "manager" for backward compatibility
+ */
+function getUserId(req: any): string {
+  return req.userId || req.user?.userId || "manager";
+}
+
+/**
  * Manager approval endpoints (Phase 1 skeleton).
  * Auth is not wired yet; actor is hardcoded.
  */
@@ -25,9 +41,6 @@ export function managerRoutes() {
   const applyRepo = new PrismaRoutingApplyRepo();
   const mappingRepo = new PrismaFieldMappingConfigRepo();
   const auditRepo = new PrismaAuditRepo();
-
-  const ORG_ID = "org_1";
-  const ACTOR = "manager";
 
   /**
    * GET /manager/proposals
@@ -41,7 +54,7 @@ export function managerRoutes() {
   const itemId = req.query?.itemId ? String(req.query.itemId) : undefined;
 
   const result = await proposalRepo.list({
-    orgId: ORG_ID,
+    orgId: getOrgId(req),
     status: status as any,
     cursor,
     limit,
@@ -68,7 +81,7 @@ export function managerRoutes() {
   r.get("/proposals/:id", async (req, res) => {
     try {
       const id = String(req.params.id);
-      const proposal = await proposalRepo.getById(ORG_ID, id);
+      const proposal = await proposalRepo.getById(getOrgId(req), id);
       
       if (!proposal) {
         return res.status(404).json({ 
@@ -95,7 +108,7 @@ export function managerRoutes() {
   r.post("/proposals/:id/approve", async (req, res) => {
     const id = String(req.params.id);
     try {
-      const proposal = await proposalRepo.getById(ORG_ID, id);
+      const proposal = await proposalRepo.getById(getOrgId(req), id);
       if (!proposal) return res.status(404).json({ ok: false, error: "Proposal not found" });
       if (proposal.status !== "PROPOSED") return res.status(400).json({ ok: false, error: "Proposal is not PROPOSED" });
 
@@ -137,7 +150,7 @@ export function managerRoutes() {
 
       // Log audit
       await auditRepo.log({
-        orgId: ORG_ID,
+        orgId: getOrgId(req),
         actorUserId: ACTOR,
         action: "routing.approve_and_apply",
         entityType: "RoutingProposal",
@@ -158,7 +171,7 @@ export function managerRoutes() {
         await prisma.routingApply.delete({
           where: {
             orgId_proposalId: {
-              orgId: ORG_ID,
+              orgId: getOrgId(req),
               proposalId: id,
             },
           },
@@ -184,7 +197,7 @@ export function managerRoutes() {
     await proposalRepo.setDecision({ orgId: ORG_ID, id, status: "REJECTED", decidedBy: ACTOR, decisionNotes: req.body?.notes ?? null });
 
     await auditRepo.log({
-      orgId: ORG_ID,
+      orgId: getOrgId(req),
       actorUserId: ACTOR,
       action: "routing.reject",
       entityType: "RoutingProposal",
@@ -199,7 +212,7 @@ export function managerRoutes() {
   r.post("/proposals/:id/override", async (req, res) => {
     const id = String(req.params.id);
     try {
-      const proposal = await proposalRepo.getById(ORG_ID, id);
+      const proposal = await proposalRepo.getById(getOrgId(req), id);
       if (!proposal) return res.status(404).json({ ok: false, error: "Proposal not found" });
 
       const newValue = req.body?.assigneeValue;
@@ -209,7 +222,7 @@ export function managerRoutes() {
 
       // Update proposal status to OVERRIDDEN
       const updated = await proposalRepo.setDecision({
-        orgId: ORG_ID,
+        orgId: getOrgId(req),
         id,
         status: "OVERRIDDEN",
         decidedBy: ACTOR,
@@ -218,7 +231,7 @@ export function managerRoutes() {
       });
 
       await auditRepo.log({
-        orgId: ORG_ID,
+        orgId: getOrgId(req),
         actorUserId: ACTOR,
         action: "routing.override",
         entityType: "RoutingProposal",
@@ -266,7 +279,7 @@ export function managerRoutes() {
       await proposalRepo.markApplied(ORG_ID, id);
 
       await auditRepo.log({
-        orgId: ORG_ID,
+        orgId: getOrgId(req),
         actorUserId: ACTOR,
         action: "routing.override_and_apply",
         entityType: "RoutingProposal",
@@ -286,7 +299,7 @@ export function managerRoutes() {
         await prisma.routingApply.delete({
           where: {
             orgId_proposalId: {
-              orgId: ORG_ID,
+              orgId: getOrgId(req),
               proposalId: id,
             },
           },
@@ -325,7 +338,7 @@ r.post("/proposals/bulk-approve", async (req, res) => {
 
   for (const id of ids) {
     try {
-      const proposal = await proposalRepo.getById(ORG_ID, id);
+      const proposal = await proposalRepo.getById(getOrgId(req), id);
       if (!proposal) {
         results.push({ id, ok: false, error: "Proposal not found" });
         continue;
@@ -360,7 +373,7 @@ r.post("/proposals/bulk-approve", async (req, res) => {
       });
 
       await proposalRepo.setDecision({ 
-        orgId: ORG_ID, 
+        orgId: getOrgId(req), 
         id, 
         status: "APPROVED", 
         decidedBy: ACTOR, 
@@ -369,7 +382,7 @@ r.post("/proposals/bulk-approve", async (req, res) => {
       await proposalRepo.markApplied(ORG_ID, id);
 
       await auditRepo.log({
-        orgId: ORG_ID,
+        orgId: getOrgId(req),
         actorUserId: ACTOR,
         action: "routing.bulk_approve.apply",
         entityType: "RoutingProposal",
@@ -389,7 +402,7 @@ r.post("/proposals/bulk-approve", async (req, res) => {
         await prisma.routingApply.delete({
           where: {
             orgId_proposalId: {
-              orgId: ORG_ID,
+              orgId: getOrgId(req),
               proposalId: id,
             },
           },
@@ -436,7 +449,7 @@ r.post("/proposals/approve-all", async (req, res) => {
 
   while (processed < maxTotal) {
     const page: { items: any[]; nextCursor: string | null } = await proposalRepo.list({
-      orgId: ORG_ID,
+      orgId: getOrgId(req),
       status: status as any,
       limit: Math.min(pageSize, maxTotal - processed),
       cursor,
@@ -480,7 +493,7 @@ r.post("/proposals/approve-all", async (req, res) => {
         await proposalRepo.markApplied(ORG_ID, id);
 
         await auditRepo.log({
-          orgId: ORG_ID,
+          orgId: getOrgId(req),
           actorUserId: ACTOR,
           action: "routing.approve_all.apply",
           entityType: "RoutingProposal",

@@ -73,7 +73,19 @@ export function orgContextMiddleware(
       }
     }
 
-    // No valid auth found
+    // No valid auth found - check if AUTH is disabled
+    if (!env.AUTH_ENABLED) {
+      // When auth is disabled, use default organization
+      req.orgId = "org_1";
+      
+      log.debug("Using default organization (AUTH_ENABLED=false)", { 
+        orgId: req.orgId,
+        path: req.path 
+      });
+      
+      return next();
+    }
+    
     log.warn("No valid organization context found", { 
       path: req.path,
       hasAuthHeader: !!authHeader,
@@ -83,6 +95,11 @@ export function orgContextMiddleware(
     throw new UnauthorizedError("Invalid or missing authentication credentials");
     
   } catch (error) {
+    // If AUTH is disabled and there's an error, use default org
+    if (!env.AUTH_ENABLED && !req.orgId) {
+      req.orgId = "org_1";
+      return next();
+    }
     next(error);
   }
 }

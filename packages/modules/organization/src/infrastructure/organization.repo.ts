@@ -16,6 +16,9 @@ export interface CreateOrganizationInput {
   mondayWorkspaceId?: string;
   createdBy?: string;
   settings?: Record<string, any>;
+  isActive?: boolean;
+  subscriptionStatus?: string;
+  trialEndsAt?: Date;
 }
 
 export interface UpdateOrganizationInput {
@@ -93,7 +96,7 @@ export class PrismaOrganizationRepo {
     const settingsJson =
       input.settings ? JSON.stringify(input.settings) : "{}";
 
-    return this.prisma.organization.create({
+    const organization = await this.prisma.organization.create({
       data: {
         name: input.name,
         displayName: input.displayName,
@@ -103,9 +106,14 @@ export class PrismaOrganizationRepo {
         mondayWorkspaceId: input.mondayWorkspaceId,
         createdBy: input.createdBy,
         settings: settingsJson,
+        isActive: input.isActive ?? true,
+        subscriptionStatus: input.subscriptionStatus,
+        trialEndsAt: input.trialEndsAt,
         updatedAt: new Date(),
       },
     });
+    
+    return organization;
   }
 
   /**

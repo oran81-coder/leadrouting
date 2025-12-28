@@ -34,6 +34,7 @@ export interface AuthContextValue {
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
+  setAuthFromTokens: (tokens: AuthTokens, user: User) => void;
   hasRole: (roles: User["role"][]) => boolean;
 }
 
@@ -54,8 +55,8 @@ const USER_KEY = "lead_routing_user";
 // Token refresh interval: 50 minutes (tokens expire in 60 minutes)
 const REFRESH_INTERVAL = 50 * 60 * 1000;
 
-// Check if auth is enabled from env (default: false for backward compatibility)
-const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
+// Check if auth is enabled from env (default: TRUE - Login required)
+const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED !== "false";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 // ============================================================================
@@ -128,7 +129,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         throw new Error(error.message || "Login failed");
       }
 
-      const data = await response.json();
+      const result = await response.json();
+      const data = result.data; // API returns { success: true, data: {...} }
       
       // Save tokens and user
       setTokens({
@@ -136,6 +138,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         refreshToken: data.refreshToken,
       });
       saveUser(data.user);
+      
+      // Update state immediately
+      setUser(data.user);
 
       showToast("Login successful!", "success");
     } catch (error) {
@@ -190,7 +195,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         throw new Error("Token refresh failed");
       }
 
-      const data = await response.json();
+      const result = await response.json();
+      const data = result.data; // API returns { success: true, data: {...} }
       
       // Update tokens
       setTokens({
@@ -198,12 +204,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
         refreshToken: data.refreshToken,
       });
       saveUser(data.user);
+      setUser(data.user);
     } catch (error) {
       console.error("Token refresh failed:", error);
       // On refresh failure, log out user
       clearTokens();
       setUser(null);
     }
+  };
+
+  // ========================================
+  // NEW: Set auth state directly from OAuth callback
+  // ========================================
+  const setAuthFromTokens = (tokens: AuthTokens, userData: User) => {
+    console.log('[AuthContext] Setting auth from tokens:', userData.email);
+    
+    // Save to localStorage
+    setTokens(tokens);
+    saveUser(userData);
+    
+    // Update state immediately
+    setUser(userData);
+    setIsLoading(false);
+    
+    console.log('[AuthContext] Auth state updated successfully');
+    showToast("Login successful!", "success");
   };
 
   // ========================================
@@ -240,8 +265,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           });
 
           if (response.ok) {
-            const data = await response.json();
-            saveUser(data.user);
+            const result = await response.json();
+            const userData = result.data?.user || result.user; // Handle both formats
+            saveUser(userData);
+            setUser(userData);
           } else {
             // Token invalid, try refresh
             await refreshAuth();
@@ -285,6 +312,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     login,
     logout,
     refreshAuth,
+    setAuthFromTokens,
     hasRole,
   };
 

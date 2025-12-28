@@ -12,10 +12,13 @@
 import { useState, useEffect } from "react";
 import { useTheme } from "./ThemeContext";
 import { getPerformanceMetrics, type MetricsResponse } from "./api";
+import { MondayNotConnected } from "./MondayNotConnected";
+import { useMondayConnection } from "./hooks/useMondayConnection";
 
 export function PerformanceDashboard() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const { isConnected, loading: connectionLoading } = useMondayConnection();
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +45,26 @@ export function PerformanceDashboard() {
       return () => clearInterval(interval);
     }
   }, [autoRefresh]);
+
+  // Show Monday not connected message if not connected (after all hooks)
+  if (connectionLoading) {
+    return (
+      <div className={`min-h-screen ${isDark ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-900"} p-8`}>
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-300 dark:bg-gray-700 rounded w-1/4 mb-6"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-32 bg-gray-300 dark:bg-gray-700 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isConnected === false) {
+    return <MondayNotConnected pageName="Performance" />;
+  }
 
   const getMetricValue = (key: string): number => {
     return metrics?.metrics[key]?.value ?? 0;

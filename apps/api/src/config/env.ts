@@ -10,21 +10,21 @@ const envSchema = z.object({
   PORT: z.string().transform(Number).pipe(z.number().int().positive()).default("3000"),
   
   // Database
-  DATABASE_URL: z.string().url().default("file:./prisma/dev.db"),
+  DATABASE_URL: z.string().min(1).default("file:./prisma/dev.db"),
   
   // Security
   ENCRYPTION_KEY: z.string().length(32, "ENCRYPTION_KEY must be exactly 32 characters"),
   
   // Monday.com Integration
   MONDAY_API_TOKEN: z.string().optional(),
-  MONDAY_API_ENDPOINT: z.string().url().default("https://api.monday.com/v2"),
+  MONDAY_API_ENDPOINT: z.string().default("https://api.monday.com/v2"),
   MONDAY_API_VERSION: z.string().default("2024-10"),
   MONDAY_USE_MOCK: z.string().transform((val) => val === "true").default("false"),
   
   // Monday.com OAuth (for organization registration)
   MONDAY_OAUTH_CLIENT_ID: z.string().optional(),
   MONDAY_OAUTH_CLIENT_SECRET: z.string().optional(),
-  MONDAY_OAUTH_REDIRECT_URI: z.string().url().optional(),
+  MONDAY_OAUTH_REDIRECT_URI: z.string().optional(),
   
   // Metrics Job Configuration
   METRICS_JOB_ENABLED: z.string().transform((val) => val === "true").default("true"),
@@ -60,15 +60,41 @@ const envSchema = z.object({
   BCRYPT_ROUNDS: z.string().transform(Number).pipe(z.number().int().min(10).max(15)).default("10"),
   
   // Webhooks (Phase 2 - Real-time Integration)
-  PUBLIC_URL: z.string().url().optional(),
+  PUBLIC_URL: z.string().optional(),
   WEBHOOK_SECRET: z.string().optional(),
 });
 
 /**
- * Parsed and validated environment variables
- * Throws error if validation fails
+ * Validate environment on module load
+ * Fail fast if configuration is invalid
  */
-export const env = envSchema.parse(process.env);
+let env: z.infer<typeof envSchema>;
+
+try {
+  env = envSchema.parse(process.env);
+  if (env.NODE_ENV !== "test") {
+    console.log(`✅ Environment validated successfully (${env.NODE_ENV})`);
+  }
+} catch (error) {
+  if (error instanceof z.ZodError) {
+    console.error("❌ Environment validation failed:");
+    try {
+      error.errors.forEach((err) => {
+        const path = err.path ? err.path.join(".") : "unknown";
+        const message = err.message || "validation error";
+        console.error(`  - ${path}: ${message}`);
+      });
+    } catch (inspectError) {
+      console.error("  Error details could not be displayed");
+      console.error("  Please check all required environment variables");
+    }
+    process.exit(1);
+  }
+  console.error("Unexpected error during environment validation:", error);
+  process.exit(1);
+}
+
+export { env };
 
 /**
  * Type-safe environment config
@@ -93,24 +119,4 @@ export function requireEnv(key: string): string {
   const v = process.env[key];
   if (v == null || String(v).trim() === "") throw new Error(`Missing required env: ${key}`);
   return String(v);
-}
-
-/**
- * Validate environment on module load
- * Fail fast if configuration is invalid
- */
-try {
-  envSchema.parse(process.env);
-  if (env.NODE_ENV !== "test") {
-    console.log(`✅ Environment validated successfully (${env.NODE_ENV})`);
-  }
-} catch (error) {
-  if (error instanceof z.ZodError) {
-    console.error("❌ Environment validation failed:");
-    error.errors.forEach((err) => {
-      console.error(`  - ${err.path.join(".")}: ${err.message}`);
-    });
-    process.exit(1);
-  }
-  throw error;
 }

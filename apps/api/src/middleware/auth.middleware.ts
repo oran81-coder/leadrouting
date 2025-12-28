@@ -60,15 +60,20 @@ export async function authenticate(
 
     // Extract token from Authorization header
     const authHeader = req.headers.authorization;
+    console.log('[auth.middleware] Auth header:', authHeader?.substring(0, 30) + '...');
+    
     if (!authHeader?.startsWith("Bearer ")) {
+      console.log('[auth.middleware] Missing or malformed auth header');
       res.status(401).json({ error: "Missing or invalid authorization header" });
       return;
     }
 
     const token = authHeader.substring(7);
+    console.log('[auth.middleware] Token extracted, length:', token.length);
 
     // Verify token
     const payload = verifyToken<JWTPayload>(token);
+    console.log('[auth.middleware] Token verified, payload:', { userId: payload.userId, sessionId: payload.sessionId });
 
     // Check if session is still valid and not revoked
     const prisma = getPrisma();

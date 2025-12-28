@@ -798,10 +798,48 @@ export interface MondayCallbackResponse {
   };
 }
 
+// Separate interface for login (no organization field)
+export interface MondayLoginResponse {
+  success: boolean;
+  data: {
+    user: {
+      id: string;
+      email: string;
+      username: string;
+      role: string;
+      orgId: string;
+      firstName?: string;
+      lastName?: string;
+      isActive: boolean;
+    };
+    tokens: {
+      accessToken: string;
+      refreshToken: string;
+    };
+  };
+}
+
 /**
- * Get Monday.com OAuth authorization URL
+ * Get Monday.com OAuth authorization URL for login
  */
 export async function getMondayOAuthUrl(): Promise<MondayOAuthUrlResponse> {
+  return await http<MondayOAuthUrlResponse>("/auth/monday/oauth/url");
+}
+
+/**
+ * Complete Monday.com OAuth callback for login
+ */
+export async function loginWithMonday(code: string, state?: string): Promise<MondayLoginResponse> {
+  return await http<MondayLoginResponse>("/auth/monday/oauth/callback", {
+    method: "POST",
+    body: JSON.stringify({ code, state }),
+  });
+}
+
+/**
+ * Get Monday.com OAuth authorization URL for registration
+ */
+export async function getMondayOAuthRegisterUrl(): Promise<MondayOAuthUrlResponse> {
   return await http<MondayOAuthUrlResponse>("/auth/register-org/monday");
 }
 

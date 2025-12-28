@@ -1,0 +1,46 @@
+# Copy this file to .env and fill in your Monday.com credentials
+
+# ===============================================
+# STEP 1: Basic Configuration (Already set)
+# ===============================================
+PORT=3000
+NODE_ENV=development
+DATABASE_URL="file:./prisma/dev.db"
+JWT_SECRET=lead-routing-super-secret-jwt-key-2024
+BCRYPT_ROUNDS=10
+AUTH_ENABLED=true
+ROUTING_API_KEY=dev_key_123
+CORS_ORIGIN=http://localhost:5173
+
+# ===============================================
+# STEP 2: FILL THESE WITH YOUR MONDAY.COM OAUTH CREDENTIALS
+# ===============================================
+# Instructions:
+# 1. Go to: https://auth.monday.com/developers
+# 2. Create app: "Lead Routing System"
+# 3. OAuth section → Copy Client ID and Secret
+# 4. Replace the values below:
+
+MONDAY_OAUTH_CLIENT_ID=YOUR_CLIENT_ID_HERE
+MONDAY_OAUTH_CLIENT_SECRET=YOUR_CLIENT_SECRET_HERE
+MONDAY_OAUTH_REDIRECT_URI=http://localhost:5173/register-org
+
+# ===============================================
+# STEP 3: In Monday.com app settings
+# ===============================================
+# Add Redirect URI: http://localhost:5173/register-org
+# Enable these scopes:
+#   ✓ me:read
+#   ✓ account:read
+#   ✓ boards:read
+#   ✓ boards:write
+#   ✓ users:read
+#   ✓ workspaces:read
+
+# ===============================================
+# After filling, copy this file:
+# ===============================================
+# 1. Copy this file to .env in the same directory
+# 2. Restart server: npm run dev
+# 3. Test: http://localhost:5173/#register
+

@@ -26,7 +26,7 @@ export function cors(req: Request, res: Response, next: NextFunction) {
     }
   }
 
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key, Authorization");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
 
   if (req.method === "OPTIONS") {

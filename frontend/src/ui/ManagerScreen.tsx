@@ -18,12 +18,15 @@ import { TableSkeleton } from "./TableSkeleton";
 import { Tooltip } from "./Tooltip";
 import { useDebounce } from "./hooks/useDebounce";
 import { OverrideDialog } from "./OverrideDialog";
+import { MondayNotConnected } from "./MondayNotConnected";
+import { useMondayConnection } from "./hooks/useMondayConnection";
 
 type StatusFilter = "PENDING" | "PROPOSED" | "APPROVED" | "REJECTED" | "";
 
 export function ManagerScreen() {
   const { showToast } = useToast();
   const { confirm, isOpen, options, handleConfirm, handleCancel } = useConfirm();
+  const { isConnected, loading: connectionLoading } = useMondayConnection();
   const [proposals, setProposals] = useState<ManagerProposalDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +97,15 @@ export function ManagerScreen() {
 
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, statusFilter]);
+
+  // Show Monday not connected message if not connected (after all hooks)
+  if (connectionLoading) {
+    return <TableSkeleton rows={5} columns={6} />;
+  }
+
+  if (isConnected === false) {
+    return <MondayNotConnected pageName="Manager" />;
+  }
 
   async function handleApprove(id: string) {
     // Optimistic update - update UI immediately

@@ -11,6 +11,7 @@ import { metricsRoutes } from "./metrics.routes";
 import { mondayPickerRoutes } from "./mondayPicker.routes";
 import authRoutes from "./auth.routes";
 import orgRegistrationRoutes from "./org-registration.routes";
+import mondayOAuthLoginRoutes from "./monday-oauth-login.routes";
 import organizationRoutes from "./organization.routes";
 import superAdminRoutes from "./super-admin.routes";
 import { kpiWeightsRoutes } from "./kpiWeights.routes";
@@ -32,7 +33,8 @@ export function registerRoutes(app: Express) {
 
   // Public routes (no API key required)
   app.use("/health", healthRoutes());
-  app.use("/auth", authRoutes); // Authentication endpoints
+  app.use("/auth", authRoutes); // Authentication endpoints  
+  app.use("/auth/monday", mondayOAuthLoginRoutes); // Monday OAuth login
   app.use("/auth/register-org", orgRegistrationRoutes); // Organization registration (public)
   app.use("/webhooks", webhooksRoutes()); // Phase 2: Monday.com webhooks (verified by signature)
 
