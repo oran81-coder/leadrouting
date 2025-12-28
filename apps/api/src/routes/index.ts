@@ -19,6 +19,7 @@ import { routingCalculationRoutes } from "./routingCalculation.routes";
 import { agentProfileRoutes } from "./agentProfile.routes";
 import { webhooksRoutes } from "./webhooks.routes";
 import availabilityRoutes from "./availability.routes";
+import previewRoutes from "./preview.routes";
 
 import { requireApiKey } from "../middleware/authApiKey";
 import { requireMondayConnected } from "../middleware/requireMondayConnected";
@@ -56,6 +57,7 @@ export function registerRoutes(app: Express) {
   app.use("/kpi-weights", requireApiKey, kpiWeightsRoutes()); // Phase 2: KPI Weights Configuration
   app.use("/agents", requireApiKey, agentProfileRoutes()); // Phase 1: Agent Profiling
   app.use("/availability", requireApiKey, availabilityRoutes); // Agent Availability & Capacity
+  app.use("/preview", requireApiKey, previewRoutes); // Historical Preview (simulation)
 
   app.use("/monday", requireApiKey, requireMondayConnected(ORG_ID), mondayPickerRoutes());
 

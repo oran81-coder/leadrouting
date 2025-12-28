@@ -252,6 +252,55 @@ export async function previewRouting(limit: number = 10): Promise<{ results: Rou
   return { results: data.results };
 }
 
+// ========================================
+// Historical Preview API
+// ========================================
+
+export type HistoricalPreviewLead = {
+  boardId: string;
+  itemId: string;
+  name: string;
+  industry: string;
+  status: string;
+  wasClosedWon: boolean;
+  closedWonAt: string | null;
+  enteredAt: string | null;
+  assignedTo: {
+    userId: string;
+    name: string;
+  } | null;
+  recommendedTo: {
+    userId: string;
+    name: string;
+  } | null;
+  score: number;
+  breakdown: Record<string, number>;
+  followedRecommendation: boolean | null;
+};
+
+export type HistoricalPreviewSummary = {
+  totalLeads: number;
+  routedLeads: number;
+  closedWonLeads: number;
+  systemSuccessRate: number; // percentage
+  currentSuccessRate: number; // percentage
+  improvement: number; // percentage points
+};
+
+export type HistoricalPreviewResponse = {
+  ok: boolean;
+  windowDays: number;
+  hasClosedWonMapping: boolean;
+  summary: HistoricalPreviewSummary;
+  leads: HistoricalPreviewLead[];
+};
+
+export async function fetchHistoricalPreview(windowDays: 30 | 60 | 90): Promise<HistoricalPreviewResponse> {
+  return await http<HistoricalPreviewResponse>(`/preview/historical`, {
+    method: "POST",
+    body: JSON.stringify({ windowDays }),
+  });
+}
 
 // ========================================
 // Outcomes API (Phase 1.7)

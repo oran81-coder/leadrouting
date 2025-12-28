@@ -37,6 +37,7 @@ const PerformanceDashboard = lazy(() => import("./PerformanceDashboard").then(m 
 const SuperAdminDashboard = lazy(() => import("./SuperAdminDashboard").then(m => ({ default: m.SuperAdminDashboard })));
 const OrgRegistrationPage = lazy(() => import("./OrgRegistrationPage").then(m => ({ default: m.OrgRegistrationPage })));
 const LoginScreen = lazy(() => import("./LoginScreen").then(m => ({ default: m.LoginScreen })));
+const PreviewScreen = lazy(() => import("./PreviewScreen").then(m => ({ default: m.PreviewScreen })));
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -763,7 +764,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
 
 export default function App() {
   const { user } = useAuth(); // Get current user for role-based features
-  const [view, setView] = useState<"manager" | "admin" | "outcomes" | "mapping" | "performance" | "super-admin" | "register">("admin");
+  const [view, setView] = useState<"manager" | "admin" | "outcomes" | "mapping" | "performance" | "super-admin" | "register" | "preview">("admin");
 
   // global connection settings
   const [apiBase, setApiBase] = useState(getApiBase());
@@ -1059,6 +1060,17 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         >
           📊 Performance
         </button>
+        <button 
+          onClick={() => setView("preview")} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            view === "preview" 
+              ? "bg-blue-600 text-white" 
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+          }`}
+          title="ראה מה היה קורה אם המערכת הייתה פעילה בעבר"
+        >
+          🔮 Preview
+        </button>
         
         {/* Super Admin button - only visible to super_admin users */}
         {user && user.role === "super_admin" && (
@@ -1128,6 +1140,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         {view === "admin" && <AdminScreen />}
         {view === "mapping" && <FieldMappingWizard />}
         {view === "performance" && <PerformanceDashboard />}
+        {view === "preview" && <PreviewScreen />}
         {view === "super-admin" && <SuperAdminDashboard />}
         {view === "register" && <OrgRegistrationPage />}
       </Suspense>
