@@ -18,6 +18,7 @@ export function PreviewScreen() {
   // Filter states
   const [filterIndustry, setFilterIndustry] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterAgent, setFilterAgent] = useState<string>("all");
 
   // Load preview on mount and when window changes
   useEffect(() => {
@@ -42,15 +43,37 @@ export function PreviewScreen() {
     ? Array.from(new Set(data.leads.map((l) => l.industry).filter(Boolean)))
     : [];
 
+  // Get unique agents from recommendations
+  const agents = data
+    ? Array.from(
+        new Set(
+          data.leads
+            .map((l) => l.recommendedTo)
+            .filter((agent): agent is NonNullable<typeof agent> => agent !== null)
+            .map((agent) => JSON.stringify({ userId: agent.userId, name: agent.name }))
+        )
+      )
+        .map((str) => JSON.parse(str))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+
   // Apply filters
   const filteredLeads = data
     ? data.leads.filter((lead) => {
         if (filterIndustry !== "all" && lead.industry !== filterIndustry) return false;
         if (filterStatus === "closed_won" && !lead.wasClosedWon) return false;
         if (filterStatus === "open" && lead.wasClosedWon) return false;
+        if (filterAgent !== "all" && lead.recommendedTo?.userId !== filterAgent) return false;
         return true;
       })
     : [];
+
+  // Calculate filtered summary stats
+  const filteredSummary = {
+    totalLeads: filteredLeads.length,
+    closedWonLeads: filteredLeads.filter((l) => l.wasClosedWon).length,
+    routedLeads: filteredLeads.filter((l) => l.recommendedTo !== null).length,
+  };
 
   const cardStyle: React.CSSProperties = {
     background: isDark ? "#1e293b" : "#ffffff",
@@ -631,6 +654,98 @@ export function PreviewScreen() {
             </div>
           </div>
 
+          {/* Agent-Specific Stats (if agent filter is active) */}
+          {filterAgent !== "all" && (
+            <div
+              style={{
+                ...cardStyle,
+                marginBottom: 32,
+                background: isDark
+                  ? "linear-gradient(135deg, #1e293b 0%, #312e81 100%)"
+                  : "linear-gradient(135deg, #ffffff 0%, #f5f3ff 100%)",
+                borderLeft: `4px solid ${isDark ? "#a78bfa" : "#7c3aed"}`,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                <div
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: "50%",
+                    background: isDark
+                      ? "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)"
+                      : "linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 20,
+                    color: "#ffffff",
+                    fontWeight: 700,
+                    boxShadow: isDark
+                      ? "0 4px 12px rgba(139, 92, 246, 0.4)"
+                      : "0 4px 12px rgba(124, 58, 237, 0.3)",
+                  }}
+                >
+                  👤
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: isDark ? "#f1f5f9" : "#0f172a" }}>
+                    {agents.find((a) => a.userId === filterAgent)?.name || "Agent"}
+                  </h3>
+                  <p style={{ fontSize: 13, color: isDark ? "#94a3b8" : "#64748b", margin: "4px 0 0 0" }}>
+                    Performance Preview (Filtered View)
+                  </p>
+                </div>
+              </div>
+              
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                  gap: 16,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: isDark ? "#94a3b8" : "#64748b", marginBottom: 6 }}>
+                    Recommended Leads
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: isDark ? "#a78bfa" : "#7c3aed" }}>
+                    {filteredSummary.totalLeads}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: isDark ? "#94a3b8" : "#64748b", marginBottom: 6 }}>
+                    Would Close
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: isDark ? "#10b981" : "#059669" }}>
+                    {filteredSummary.closedWonLeads}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: isDark ? "#94a3b8" : "#64748b", marginBottom: 6 }}>
+                    Success Rate
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: isDark ? "#f59e0b" : "#d97706" }}>
+                    {filteredSummary.totalLeads > 0
+                      ? ((filteredSummary.closedWonLeads / filteredSummary.totalLeads) * 100).toFixed(1)
+                      : 0}
+                    %
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: isDark ? "#94a3b8" : "#64748b", marginBottom: 6 }}>
+                    Avg Score
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: isDark ? "#60a5fa" : "#3b82f6" }}>
+                    {filteredLeads.length > 0
+                      ? (filteredLeads.reduce((sum, l) => sum + l.score, 0) / filteredLeads.length).toFixed(1)
+                      : "0.0"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Filters */}
           <div
             style={{
@@ -686,6 +801,53 @@ export function PreviewScreen() {
               <option value="closed_won">Closed Won Only</option>
               <option value="open">Open Only</option>
             </select>
+            <select
+              value={filterAgent}
+              onChange={(e) => setFilterAgent(e.target.value)}
+              style={{
+                padding: "8px 14px",
+                background: isDark ? "#334155" : "#f8fafc",
+                color: isDark ? "#f1f5f9" : "#0f172a",
+                border: `1px solid ${isDark ? "#475569" : "#cbd5e1"}`,
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+                minWidth: 180,
+              }}
+            >
+              <option value="all">All Agents</option>
+              {agents.map((agent) => (
+                <option key={agent.userId} value={agent.userId}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+            {filterAgent !== "all" && (
+              <button
+                onClick={() => {
+                  setFilterIndustry("all");
+                  setFilterStatus("all");
+                  setFilterAgent("all");
+                }}
+                style={{
+                  padding: "8px 14px",
+                  background: isDark ? "#ef4444" : "#fee2e2",
+                  color: isDark ? "#fca5a5" : "#991b1b",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>✕</span>
+                Clear Filters
+              </button>
+            )}
             <span style={{ fontSize: 14, color: isDark ? "#94a3b8" : "#64748b", marginLeft: "auto", fontWeight: 500 }}>
               Showing {filteredLeads.length} of {data.leads.length} leads
             </span>
