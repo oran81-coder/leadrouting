@@ -60,4 +60,9 @@ export class PrismaMondayCredentialRepo {
     
     return { connected: true, endpoint: row.endpoint, updatedAt: row.updatedAt.toISOString() };
   }
+
+  async delete(orgId: string): Promise<void> {
+    const prisma = getPrisma();
+    await prisma.mondayCredential.deleteMany({ where: { orgId } });
+  }
 }
