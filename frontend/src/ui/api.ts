@@ -1115,3 +1115,116 @@ export async function superAdminActivateOrganization(orgId: string): Promise<{
   );
 }
 
+// ============================================
+// Organization Settings (Admin-only)
+// ============================================
+
+export type OrganizationSettings = {
+  id: string;
+  name: string;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  tier: string;
+  isActive: boolean;
+  mondayConnected: boolean;
+  mondayWorkspaceId: string | null;
+  subscriptionStatus: string | null;
+  trialEndsAt: string | null;
+  createdAt: string;
+  settings: Record<string, any>;
+  stats: {
+    userCount: number;
+  };
+};
+
+export type UpdateOrganizationSettingsInput = {
+  displayName?: string;
+  email?: string;
+  phone?: string;
+};
+
+/**
+ * Get current organization settings
+ */
+export async function getOrganizationSettings(): Promise<{
+  ok: boolean;
+  data: OrganizationSettings;
+}> {
+  return await http<{ ok: boolean; data: OrganizationSettings }>("/org-settings");
+}
+
+/**
+ * Update organization settings
+ */
+export async function updateOrganizationSettings(
+  input: UpdateOrganizationSettingsInput
+): Promise<{
+  ok: boolean;
+  data: Partial<OrganizationSettings>;
+  message: string;
+}> {
+  return await http<{ ok: boolean; data: Partial<OrganizationSettings>; message: string }>(
+    "/org-settings",
+    {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }
+  );
+}
+
+/**
+ * Disconnect Monday.com integration
+ */
+export async function disconnectMonday(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  return await http<{ ok: boolean; message: string }>(
+    "/org-settings/disconnect-monday",
+    { method: "POST" }
+  );
+}
+
+/**
+ * Suspend organization
+ */
+export async function suspendOrganization(): Promise<{
+  ok: boolean;
+  data: Partial<OrganizationSettings>;
+  message: string;
+}> {
+  return await http<{ ok: boolean; data: Partial<OrganizationSettings>; message: string }>(
+    "/org-settings/suspend",
+    { method: "POST" }
+  );
+}
+
+/**
+ * Close organization account
+ */
+export async function closeOrganization(): Promise<{
+  ok: boolean;
+  data: Partial<OrganizationSettings>;
+  message: string;
+}> {
+  return await http<{ ok: boolean; data: Partial<OrganizationSettings>; message: string }>(
+    "/org-settings/close",
+    { method: "POST" }
+  );
+}
+
+/**
+ * Reactivate organization
+ */
+export async function reactivateOrganization(): Promise<{
+  ok: boolean;
+  data: Partial<OrganizationSettings>;
+  message: string;
+}> {
+  return await http<{ ok: boolean; data: Partial<OrganizationSettings>; message: string }>(
+    "/org-settings/reactivate",
+    { method: "POST" }
+  );
+}
+

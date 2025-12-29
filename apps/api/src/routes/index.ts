@@ -20,6 +20,7 @@ import { agentProfileRoutes } from "./agentProfile.routes";
 import { webhooksRoutes } from "./webhooks.routes";
 import availabilityRoutes from "./availability.routes";
 import previewRoutes from "./preview.routes";
+import organizationSettingsRoutes from "./organization-settings.routes";
 
 import { requireApiKey } from "../middleware/authApiKey";
 import { requireMondayConnected } from "../middleware/requireMondayConnected";
@@ -44,6 +45,7 @@ export function registerRoutes(app: Express) {
 
   // Organization management (Admin/Super Admin only)
   app.use("/organizations", requireApiKey, organizationRoutes);
+  app.use("/org-settings", organizationSettingsRoutes); // Organization settings (admin-only, auth required)
   
   // Admin routes (protected by API key, auth optional based on AUTH_ENABLED flag)
   app.use("/admin", requireApiKey, adminRoutes());

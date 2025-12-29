@@ -38,6 +38,7 @@ const SuperAdminDashboard = lazy(() => import("./SuperAdminDashboard").then(m =>
 const OrgRegistrationPage = lazy(() => import("./OrgRegistrationPage").then(m => ({ default: m.OrgRegistrationPage })));
 const LoginScreen = lazy(() => import("./LoginScreen").then(m => ({ default: m.LoginScreen })));
 const PreviewScreen = lazy(() => import("./PreviewScreen").then(m => ({ default: m.PreviewScreen })));
+const OrganizationSettingsScreen = lazy(() => import("./OrganizationSettingsScreen").then(m => ({ default: m.OrganizationSettingsScreen })));
 
 type MondayStatusDTO = {
   ok: boolean;
@@ -764,7 +765,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
 
 export default function App() {
   const { user } = useAuth(); // Get current user for role-based features
-  const [view, setView] = useState<"manager" | "admin" | "outcomes" | "mapping" | "performance" | "super-admin" | "register" | "preview">("admin");
+  const [view, setView] = useState<"manager" | "admin" | "outcomes" | "mapping" | "performance" | "super-admin" | "register" | "preview" | "org-settings">("admin");
 
   // global connection settings
   const [apiBase, setApiBase] = useState(getApiBase());
@@ -1071,6 +1072,21 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         >
           🔮 Preview
         </button>
+
+        {/* Organization Settings - only visible to admin users */}
+        {user && user.role === "admin" && (
+          <button 
+            onClick={() => setView("org-settings")} 
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              view === "org-settings" 
+                ? "bg-blue-600 text-white" 
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+            title="Manage your organization settings"
+          >
+            🏢 Organization
+          </button>
+        )}
         
         {/* Super Admin button - only visible to super_admin users */}
         {user && user.role === "super_admin" && (
@@ -1141,6 +1157,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         {view === "mapping" && <FieldMappingWizard />}
         {view === "performance" && <PerformanceDashboard />}
         {view === "preview" && <PreviewScreen />}
+        {view === "org-settings" && <OrganizationSettingsScreen />}
         {view === "super-admin" && <SuperAdminDashboard />}
         {view === "register" && <OrgRegistrationPage />}
       </Suspense>
