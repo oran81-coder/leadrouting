@@ -146,12 +146,18 @@ router.post("/oauth/callback", async (req: Request, res: Response): Promise<void
 
     const jwtAccessToken = jwt.sign(payload, env.JWT_SECRET, {
       expiresIn: env.JWT_EXPIRES_IN || "1h",
+      issuer: "lead-routing-api",
+      audience: "lead-routing-app",
     });
 
     const refreshToken = jwt.sign(
       { userId: user.id, type: "refresh" },
       env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { 
+        expiresIn: "7d",
+        issuer: "lead-routing-api",
+        audience: "lead-routing-app",
+      }
     );
 
     log.info("User logged in via Monday OAuth", {

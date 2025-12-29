@@ -35,16 +35,22 @@ const updateSettingsSchema = z.object({
  */
 async function requireOrgAdmin(req: any, res: Response, next: NextFunction) {
   try {
+    console.log('[requireOrgAdmin] req.user:', req.user);
+    console.log('[requireOrgAdmin] Authorization header:', req.headers.authorization);
+    
     const user = req.user;
     
     if (!user) {
+      console.log('[requireOrgAdmin] No user found - throwing UnauthorizedError');
       throw new UnauthorizedError("Authentication required");
     }
 
     if (user.role !== "admin") {
+      console.log('[requireOrgAdmin] User role is not admin:', user.role);
       throw new UnauthorizedError("Only organization admins can access these settings");
     }
 
+    console.log('[requireOrgAdmin] User authorized:', user.email, user.role);
     next();
   } catch (error) {
     next(error);

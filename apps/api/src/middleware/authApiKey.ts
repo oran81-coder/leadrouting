@@ -9,11 +9,14 @@ import { verifyToken } from "../../../../packages/core/src/auth/jwt.utils";
  */
 export function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const expected = optionalEnv("ROUTING_API_KEY", "");
+  console.log('[requireApiKey] ROUTING_API_KEY set:', !!expected);
+  console.log('[requireApiKey] Authorization header:', req.headers.authorization);
   
   // Always try to populate req.user from JWT if present
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
+    console.log('[requireApiKey] JWT token found, length:', token.length);
     try {
       const payload = verifyToken(token);
       if (payload) {
@@ -24,22 +27,31 @@ export function requireApiKey(req: Request, res: Response, next: NextFunction) {
           role: payload.role,
           email: payload.email,
         };
+        console.log('[requireApiKey] JWT verified, req.user set:', (req as any).user.email, (req as any).user.role);
         // If no API key required OR valid JWT, allow access
         if (!expected) return next();
         return next();
       }
-    } catch (err) {
+    } catch (err: any) {
       // Invalid JWT - continue to check API key if required
+      console.log('[requireApiKey] JWT verification failed:', err.message);
     }
+  } else {
+    console.log('[requireApiKey] No JWT token found in Authorization header');
   }
 
   // If no API key is required (dev mode), allow access
-  if (!expected) return next();
+  if (!expected) {
+    console.log('[requireApiKey] No API key required, allowing access');
+    return next();
+  }
 
   // Check API key
   const provided = String(req.headers["x-api-key"] ?? "");
   if (!provided || provided !== expected) {
+    console.log('[requireApiKey] API key check failed');
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
+  console.log('[requireApiKey] API key valid');
   return next();
 }
