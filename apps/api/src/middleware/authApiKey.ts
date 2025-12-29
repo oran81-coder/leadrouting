@@ -5,32 +5,36 @@ import { verifyToken } from "../../../../packages/core/src/auth/jwt.utils";
 /**
  * Phase 5.1: Updated to support both API Key and JWT authentication
  * - If ROUTING_API_KEY is set, require either `x-api-key` header OR valid JWT token
- * - If not set, auth is disabled (local dev convenience)
+ * - If not set, still try to populate req.user from JWT for authenticated routes
  */
 export function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const expected = optionalEnv("ROUTING_API_KEY", "");
-  if (!expected) return next();
-
-  // Check if JWT token is provided and valid
+  
+  // Always try to populate req.user from JWT if present
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
     try {
       const payload = verifyToken(token);
       if (payload) {
-        // Valid JWT - attach user to request and allow access
+        // Valid JWT - attach user to request
         (req as any).user = {
           userId: payload.userId,
           orgId: payload.orgId,
           role: payload.role,
           email: payload.email,
         };
+        // If no API key required OR valid JWT, allow access
+        if (!expected) return next();
         return next();
       }
     } catch (err) {
-      // Invalid JWT - fall through to API key check
+      // Invalid JWT - continue to check API key if required
     }
   }
+
+  // If no API key is required (dev mode), allow access
+  if (!expected) return next();
 
   // Check API key
   const provided = String(req.headers["x-api-key"] ?? "");
