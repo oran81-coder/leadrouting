@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getPrisma } from "../../../../packages/core/src/db/prisma";
 import { PrismaLeadFactRepo } from "../infrastructure/leadFact.repo";
 import { PrismaMetricsConfigRepo } from "../infrastructure/metricsConfig.repo";
-import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/application/monday.client";
+import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/infrastructure/monday.client";
 import { optionalEnv } from "../config/env";
 
 const ORG_ID = "org_1";

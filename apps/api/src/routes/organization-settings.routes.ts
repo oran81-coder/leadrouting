@@ -10,7 +10,7 @@ import { z } from "zod";
 import { getPrisma } from "../../../../packages/core/src/db/prisma";
 import { PrismaOrganizationRepo } from "../../../../packages/modules/organization/src/infrastructure/organization.repo";
 import { PrismaMondayCredentialRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayCredential.repo";
-import { requireAuth } from "../middleware/auth.middleware";
+import { authenticateJWT } from "../middleware/auth";
 import { NotFoundError, ValidationError, UnauthorizedError } from "../../../../packages/core/src/shared/errors";
 import { log } from "../../../../packages/core/src/shared/logger";
 
@@ -20,7 +20,7 @@ const orgRepo = new PrismaOrganizationRepo(prisma);
 const mondayCredRepo = new PrismaMondayCredentialRepo();
 
 // Apply authentication to all routes
-router.use(requireAuth);
+router.use(authenticateJWT);
 
 /**
  * Validation schemas
