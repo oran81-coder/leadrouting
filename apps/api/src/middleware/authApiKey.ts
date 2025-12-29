@@ -18,7 +18,13 @@ export function requireApiKey(req: Request, res: Response, next: NextFunction) {
     try {
       const payload = verifyToken(token);
       if (payload) {
-        // Valid JWT - allow access
+        // Valid JWT - attach user to request and allow access
+        (req as any).user = {
+          userId: payload.userId,
+          orgId: payload.orgId,
+          role: payload.role,
+          email: payload.email,
+        };
         return next();
       }
     } catch (err) {
