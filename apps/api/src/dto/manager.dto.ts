@@ -25,6 +25,11 @@ export type ManagerProposalDTO = {
 
   // explainability
   explains: unknown;
+
+  // data updates (for re-scoring tracking)
+  dataUpdatedAt: string | null; // ISO timestamp of last data update
+  dataChanges: unknown; // Parsed JSON of changes
+  wasRescored: boolean; // True if proposal was updated after initial creation
 };
 
 export async function toManagerProposalDTO(p: RoutingProposal, orgId: string): Promise<ManagerProposalDTO> {
@@ -71,6 +76,19 @@ export async function toManagerProposalDTO(p: RoutingProposal, orgId: string): P
     matchScore = Number(explainability.topAgent.score);
   }
 
+  // Extract data update information
+  const dataUpdatedAt = (p as any).dataUpdatedAt ? (p as any).dataUpdatedAt : null;
+  const dataChangesRaw = (p as any).dataChanges;
+  let dataChanges: unknown = null;
+  if (dataChangesRaw) {
+    try {
+      dataChanges = typeof dataChangesRaw === 'string' ? JSON.parse(dataChangesRaw) : dataChangesRaw;
+    } catch {
+      dataChanges = null;
+    }
+  }
+  const wasRescored = !!dataUpdatedAt;
+
   return {
     id: p.id,
     status: p.status,
@@ -85,5 +103,8 @@ export async function toManagerProposalDTO(p: RoutingProposal, orgId: string): P
     matchScore,
     normalizedValues: p.normalizedValues ?? null,
     explains: explainability,
+    dataUpdatedAt,
+    dataChanges,
+    wasRescored,
   };
 }

@@ -32,7 +32,7 @@ export interface EnhancedRoutingResult {
   useScoringEngine: boolean;
   scoringResult?: ScoringResult;
   explanation?: RoutingExplanation;
-  
+
   // Old format (for backwards compatibility)
   matched: boolean;
   selectedRule?: {
@@ -42,7 +42,7 @@ export interface EnhancedRoutingResult {
     action: { type: string; value: string };
   };
   explains: any;  // Old explanation format
-  
+
   // Recommended assignment
   recommendedAgent?: {
     agentUserId: string;
@@ -50,7 +50,7 @@ export interface EnhancedRoutingResult {
     score: number;
     confidence: string;
   };
-  
+
   // Alternative agents
   alternatives?: Array<{
     rank: number;
@@ -90,21 +90,21 @@ async function executeWithScoringEngine(
   kpiWeights: any
 ): Promise<{ scoringResult: ScoringResult; explanation: RoutingExplanation; warnings: string[] }> {
   const warnings: string[] = [];
-  
+
   // 1. Get availability settings
   const availabilityRepo = new PrismaAgentAvailabilityRepo();
   const availabilityMap = new Map<string, boolean>();
-  
+
   for (const agent of agentProfiles) {
     const isAvailable = await availabilityRepo.isAgentAvailable(orgId, agent.agentUserId);
     availabilityMap.set(agent.agentUserId, isAvailable);
   }
-  
+
   // 2. Get capacity settings and calculate current capacity
   const capacityRepo = new PrismaCapacitySettingsRepo();
   const capacityCalculator = new CapacityCalculatorService();
   const capacitySettings = await capacityRepo.getOrCreateDefaults(orgId);
-  
+
   const agentUserIds = agentProfiles.map(a => a.agentUserId);
   const capacityMap = await capacityCalculator.calculateAllAgentsCapacity(
     orgId,
@@ -115,58 +115,58 @@ async function executeWithScoringEngine(
       monthlyLimit: capacitySettings.monthlyLimit
     }
   );
-  
+
   // 3. Filter out excluded and over-capacity agents
   const eligibleProfiles = agentProfiles.filter(agent => {
     const isAvailable = availabilityMap.get(agent.agentUserId);
     const capacityStatus = capacityMap.get(agent.agentUserId);
-    
+
     if (!isAvailable) {
       logger.info(`Agent ${agent.agentUserId} excluded - not available`);
       return false;
     }
-    
+
     if (capacityStatus?.hasCapacityIssue) {
       const warning = capacityCalculator.getCapacityWarning(capacityStatus, {
         dailyLimit: capacitySettings.dailyLimit,
         weeklyLimit: capacitySettings.weeklyLimit,
         monthlyLimit: capacitySettings.monthlyLimit
       });
-      
+
       logger.warn(`Agent ${agent.agentUserId} has capacity issue: ${warning}`);
       warnings.push(`Agent ${agent.agentName || agent.agentUserId}: ${warning}`);
-      
+
       // Agent still included but marked with warning
       // They will appear in results but with capacity warning
     }
-    
+
     return true;
   });
-  
+
   if (eligibleProfiles.length === 0) {
     logger.error('No eligible agents after availability/capacity filtering');
     throw new Error('No agents available for routing');
   }
-  
+
   logger.info('Agent eligibility check', {
     total: agentProfiles.length,
     eligible: eligibleProfiles.length,
     excluded: agentProfiles.length - eligibleProfiles.length,
     warnings: warnings.length
   });
-  
+
   // Convert KPI weights to ScoringRules
   const scoringRules = convertKPIWeightsToRules(kpiWeights, lead);
-  
+
   logger.info('Using Scoring Engine', {
     rulesCount: scoringRules.length,
     agentsCount: eligibleProfiles.length,
     leadId: lead.leadId,
   });
-  
+
   // Compute scores for eligible agents only
   const scoringResult = computeScores(lead, eligibleProfiles, scoringRules);
-  
+
   // Add capacity warnings to result
   if (scoringResult.recommendedAgent) {
     const capacityStatus = capacityMap.get(scoringResult.recommendedAgent.agentUserId);
@@ -179,10 +179,10 @@ async function executeWithScoringEngine(
       warnings.unshift(`⚠️ Recommended agent: ${warning}`);
     }
   }
-  
+
   // Build agent profiles map for explainability
   const agentProfilesMap = new Map(eligibleProfiles.map(a => [a.agentUserId, a]));
-  
+
   // Generate explanation
   const explanation = generateRoutingExplanation(
     lead,
@@ -190,12 +190,12 @@ async function executeWithScoringEngine(
     agentProfilesMap,
     "scored"
   );
-  
+
   // Add warnings to explanation
   if (warnings.length > 0) {
     explanation.warnings = [...(explanation.warnings || []), ...warnings];
   }
-  
+
   return { scoringResult, explanation, warnings };
 }
 
@@ -222,22 +222,22 @@ export async function executeAdvancedRouting(
 ): Promise<EnhancedRoutingResult> {
   // Decision: Use Scoring Engine if we have agent profiles
   const useScoringEngine = agentProfiles && agentProfiles.length > 0;
-  
+
   // Log warning if no agent profiles found
   if (!useScoringEngine) {
     logger.warn('No agent profiles found - falling back to legacy rule engine', {
       recommendedAction: 'Run POST /agents/profiles/recompute',
     });
   }
-  
+
   if (useScoringEngine) {
     try {
       // Extract KPI weights from metrics config
       const kpiWeights = extractKPIWeightsFromMetricsConfig(metricsConfig);
-      
+
       // Convert to NormalizedLead
       const lead = convertToNormalizedLead(normalizedValues, itemId || undefined, itemName || undefined);
-      
+
       // Execute with Scoring Engine
       const { scoringResult, explanation, warnings } = await executeWithScoringEngine(
         orgId,
@@ -245,13 +245,13 @@ export async function executeAdvancedRouting(
         agentProfiles,
         kpiWeights
       );
-      
+
       // Build result in both formats
       const result: EnhancedRoutingResult = {
         useScoringEngine: true,
         scoringResult,
         explanation,
-        
+
         // New format
         recommendedAgent: scoringResult.recommendedAgent ? {
           agentUserId: scoringResult.recommendedAgent.agentUserId,
@@ -259,7 +259,7 @@ export async function executeAdvancedRouting(
           score: Math.round(scoringResult.recommendedAgent.normalizedScore),
           confidence: explanation.recommendedAgent?.confidence || "medium",
         } : undefined,
-        
+
         alternatives: explanation.alternatives.map(alt => ({
           rank: alt.rank,
           agentUserId: alt.agentUserId,
@@ -267,7 +267,7 @@ export async function executeAdvancedRouting(
           score: alt.score,
           scoreDifference: alt.scoreDifference,
         })),
-        
+
         // Old format (for backwards compatibility)
         matched: !!scoringResult.recommendedAgent,
         selectedRule: scoringResult.recommendedAgent ? {
@@ -289,9 +289,9 @@ export async function executeAdvancedRouting(
           warnings, // Add warnings here
         },
       };
-      
+
       return result;
-      
+
     } catch (error: any) {
       logger.error('Scoring Engine failed - falling back to legacy', {
         error: error.message,
@@ -300,10 +300,10 @@ export async function executeAdvancedRouting(
       // Fall through to legacy mode
     }
   }
-  
+
   // Fallback: Use legacy rule engine
   const legacyResult = executeWithRuleEngine(normalizedValues, legacyRules);
-  
+
   return {
     useScoringEngine: false,
     matched: legacyResult.matched,
@@ -318,7 +318,25 @@ export async function executeAdvancedRouting(
  */
 export function formatExplainabilityForStorage(explanation?: RoutingExplanation): any {
   if (!explanation) return null;
-  
+
+  // Extract KPI scores from breakdown for easy UI consumption
+  const kpiScores: Record<string, number> = {};
+
+  // Combine primaryReasons and secondaryFactors
+  const allReasons = [
+    ...(explanation.breakdown.primaryReasons || []),
+    ...(explanation.breakdown.secondaryFactors || []),
+  ];
+
+  for (const reason of allReasons) {
+    if (reason.category && reason.matchScore !== undefined) {
+      // Map category to friendly KPI name
+      const categoryKey = reason.category;
+      // Use matchScore (0-1) converted to 0-100 scale for metric score
+      kpiScores[categoryKey] = Math.round(reason.matchScore * 100);
+    }
+  }
+
   return {
     summary: explanation.summary,
     topAgent: explanation.recommendedAgent,
@@ -327,6 +345,8 @@ export function formatExplainabilityForStorage(explanation?: RoutingExplanation)
       primaryReasons: explanation.breakdown.primaryReasons,
       secondaryFactors: explanation.breakdown.secondaryFactors,
       gatingSummary: explanation.breakdown.gatingSummary,
+      // Add simple KPI scores for backwards compatibility
+      ...kpiScores,
     },
     alternatives: explanation.alternatives,
     totalAgentsEvaluated: explanation.totalAgentsEvaluated,

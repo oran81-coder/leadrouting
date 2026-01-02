@@ -5,7 +5,7 @@ import { PrismaLeadFactRepo } from "../infrastructure/leadFact.repo";
 import { PrismaAgentMetricsRepo } from "../infrastructure/agentMetrics.repo";
 import { createModuleLogger } from "../infrastructure/logger";
 
-const ORG_ID = "org_1";
+const ORG_ID = optionalEnv("DEFAULT_ORG_ID", "cmjq2ces90000rbcw8s5iqlcz"); // User's orgId
 const logger = createModuleLogger('MetricsJob');
 
 function numEnv(name: string, def: number) {
@@ -66,7 +66,7 @@ export async function recomputeMetricsNow() {
   const factRepo = new PrismaLeadFactRepo();
   const snapRepo = new PrismaAgentMetricsRepo();
 
-  const cfg = await cfgRepo.getOrCreateDefaults();
+  const cfg = await cfgRepo.getOrCreateDefaults(ORG_ID);
   const boardIds = parseBoards(cfg.leadBoardIds);
   if (!boardIds.length) {
     logger.warn('[MetricsJob] No leadBoardIds configured');

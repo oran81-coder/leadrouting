@@ -211,8 +211,13 @@ export function OrgRegistrationPage() {
       >
         {/* Logo & Title */}
         <div className="text-center">
-          <div className="mx-auto h-16 w-16 flex items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-3xl font-bold shadow-lg">
-            LR
+          <div className="mx-auto mb-6">
+            <img 
+              src="/logo.png" 
+              alt="LeadoRun - Lead Routing System" 
+              className="mx-auto w-auto"
+              style={{ height: "140px", maxWidth: "550px" }}
+            />
           </div>
           <h2
             className={`mt-6 text-3xl font-extrabold ${

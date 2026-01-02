@@ -25,27 +25,31 @@ export function mappingPreviewRoutes() {
   const mappingRepo = new PrismaFieldMappingConfigRepo();
   const credentialRepo = new PrismaMondayCredentialRepo();
 
-  const ORG_ID = "org_1"; // TODO: replace with auth-derived orgId
-
   r.post("/", async (req, res) => {
     try {
+      // Get orgId from authenticated user
+      const orgId = (req.user as any)?.orgId || "org_1";
+      
       if (process.env.DEBUG_PREVIEW === "1") {
+        console.log("[mappingPreview] orgId:", orgId);
         console.log("[mappingPreview] req.body:", JSON.stringify(req.body));
         console.log("[mappingPreview] hasItem:", !!(req.body && req.body.item));
       }
 
-      const schema = await schemaRepo.getLatest(ORG_ID);
+      const schema = await schemaRepo.getLatest(orgId);
       if (!schema) {
         return res.status(400).json({ ok: false, error: "Missing internal schema for org. Save schema first via /admin/schema." });
       }
 
-      const config = await mappingRepo.getLatest(ORG_ID);
+      const config = await mappingRepo.getLatest(orgId);
       if (!config) {
         return res.status(400).json({ ok: false, error: "Missing mapping config for org. Save mapping first via /admin/mapping." });
       }
 
       const biz = validateSchemaAndMapping(schema as any, config as any);
+      console.log("[mappingPreview] Business validation result:", JSON.stringify(biz, null, 2));
       if (!biz.ok) {
+        console.error("[mappingPreview] Business validation failed:", biz.issues);
         return res.status(400).json({ ok: false, error: "Business validation failed", issues: biz.issues });
       }
 
@@ -70,7 +74,7 @@ export function mappingPreviewRoutes() {
         // TRUE EARLY RETURN - no Monday logic after this
         return res.json({
           ok: true,
-          orgId: ORG_ID,
+          orgId,
           schemaVersion: (schema as any).version,
           mappingVersion: (config as any).version,
           hasErrors,
@@ -83,7 +87,7 @@ export function mappingPreviewRoutes() {
       if (process.env.DEBUG_PREVIEW === "1") {
         console.log("[mappingPreview] MONDAY branch entered - checking credentials");
       }
-      const status = await credentialRepo.status(ORG_ID);
+      const status = await credentialRepo.status(orgId);
       if (!status.connected) {
         return res.status(400).json({
           ok: false,
@@ -91,13 +95,13 @@ export function mappingPreviewRoutes() {
         });
       }
 
-      const client = await createMondayClientForOrg(ORG_ID);
+      const client = await createMondayClientForOrg(orgId);
       const rows = await buildPreviewWithClient(client, schema, config, { limitPerBoard: 5 });
       const hasErrors = rows.some((r) => Array.isArray(r.normalizationErrors) && r.normalizationErrors.length > 0);
 
       return res.json({
         ok: true,
-        orgId: ORG_ID,
+        orgId,
         schemaVersion: (schema as any).version,
         mappingVersion: (config as any).version,
         hasErrors,

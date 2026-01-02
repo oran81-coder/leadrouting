@@ -104,17 +104,113 @@ router.post("/oauth/callback", async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Step 3: Find user by email
-    const user = await prisma.user.findUnique({
+    // Step 3: Find or create organization based on Monday workspace
+    const mondayWorkspaceId = mondayUser.account?.id;
+    
+    if (!mondayWorkspaceId) {
+      log.error("No workspace ID in Monday user info", { mondayUser });
+      res.status(400).json({
+        success: false,
+        error: "Could not retrieve workspace information from Monday.com",
+      });
+      return;
+    }
+
+    // Find organization by Monday workspace ID
+    let organization = await prisma.organization.findFirst({
+      where: { mondayWorkspaceId },
+    });
+
+    // If organization doesn't exist, create it
+    if (!organization) {
+      log.info("Organization not found for workspace, creating new organization", { 
+        mondayWorkspaceId,
+        workspaceName: mondayUser.account?.name 
+      });
+
+      const orgName = mondayUser.account?.slug || `org_${Date.now()}`;
+      const displayName = mondayUser.account?.name || "New Organization";
+
+      organization = await prisma.organization.create({
+        data: {
+          name: orgName,
+          displayName,
+          email: mondayUser.email,
+          mondayWorkspaceId,
+          tier: "standard",
+          isActive: true,
+          subscriptionStatus: "trial",
+          trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days trial
+        },
+      });
+
+      // Store Monday credentials for this new organization
+      const { PrismaMondayCredentialRepo } = require("../../../../packages/modules/monday-integration/src/infrastructure/mondayCredential.repo");
+      const mondayCredRepo = new PrismaMondayCredentialRepo();
+      await mondayCredRepo.upsert(organization.id, {
+        token: accessToken,
+        endpoint: "https://api.monday.com/v2",
+      });
+
+      log.info("Created new organization with Monday credentials", {
+        orgId: organization.id,
+        mondayWorkspaceId,
+      });
+    }
+
+    // Step 4: Find or create user
+    let user = await prisma.user.findUnique({
       where: { email: mondayUser.email },
       include: { organization: true },
     });
 
     if (!user) {
-      log.warn("User not found for Monday login", { email: mondayUser.email });
-      res.status(404).json({
+      log.info("User not found, creating new user", { 
+        email: mondayUser.email,
+        orgId: organization.id 
+      });
+      
+      // Create the user with a random password (they'll use Monday OAuth anyway)
+      const username = mondayUser.email.split("@")[0];
+      const randomPassword = Math.random().toString(36).substring(2, 15);
+      const bcrypt = require("bcryptjs");
+      const passwordHash = await bcrypt.hash(randomPassword, 10);
+
+      // First user in organization becomes admin, others become managers
+      const existingUsers = await prisma.user.count({
+        where: { orgId: organization.id },
+      });
+      const role = existingUsers === 0 ? "admin" : "manager";
+
+      user = await prisma.user.create({
+        data: {
+          email: mondayUser.email,
+          username,
+          passwordHash,
+          role,
+          orgId: organization.id,
+          firstName: mondayUser.name || username,
+          isActive: true,
+        },
+        include: { organization: true },
+      });
+
+      log.info("Created new user via Monday OAuth", {
+        userId: user.id,
+        email: user.email,
+        role,
+        orgId: user.orgId,
+      });
+    } else if (user.orgId !== organization.id) {
+      // User exists but belongs to different organization
+      log.warn("User exists but belongs to different organization", {
+        email: user.email,
+        userOrgId: user.orgId,
+        workspaceOrgId: organization.id,
+      });
+      res.status(400).json({
         success: false,
-        error: "No account found with this email. Please register your organization first.",
+        error: "This email is already associated with a different organization",
       });
       return;
     }
@@ -135,13 +231,27 @@ router.post("/oauth/callback", async (req: Request, res: Response): Promise<void
       data: { lastLoginAt: new Date() },
     });
 
-    // Generate JWT tokens
+    // Create session
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        token: "", // Will be filled after JWT creation
+        refreshToken: "", // Will be filled after JWT creation
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+        refreshExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        ipAddress: req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+      },
+    });
+
+    // Generate JWT tokens with sessionId
     const payload = {
       userId: user.id,
       email: user.email,
       role: user.role,
       orgId: user.orgId,
       username: user.username,
+      sessionId: session.id, // Add sessionId to payload
     };
 
     const jwtAccessToken = jwt.sign(payload, env.JWT_SECRET, {
@@ -151,7 +261,7 @@ router.post("/oauth/callback", async (req: Request, res: Response): Promise<void
     });
 
     const refreshToken = jwt.sign(
-      { userId: user.id, type: "refresh" },
+      { userId: user.id, sessionId: session.id, type: "refresh" }, // Add sessionId to refresh token
       env.JWT_SECRET,
       { 
         expiresIn: "7d",
@@ -159,6 +269,15 @@ router.post("/oauth/callback", async (req: Request, res: Response): Promise<void
         audience: "lead-routing-app",
       }
     );
+
+    // Update session with actual tokens
+    await prisma.session.update({
+      where: { id: session.id },
+      data: {
+        token: jwtAccessToken,
+        refreshToken: refreshToken,
+      },
+    });
 
     log.info("User logged in via Monday OAuth", {
       userId: user.id,

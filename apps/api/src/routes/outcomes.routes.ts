@@ -9,7 +9,7 @@ import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
  * Falls back to org_1 for backward compatibility
  */
 function getOrgId(req: any): string {
-  return req.orgId || req.user?.orgId || "org_1";
+  return req.orgId || req.user?.orgId || process.env.DEFAULT_ORG_ID || "org_1";
 }
 
 /**
@@ -42,19 +42,21 @@ export function outcomesRoutes() {
       const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
       // Get config to check if dealAmount is configured
-      const cfg = await cfgRepo.getOrCreateDefaults();
+      const orgId = getOrgId(req);
+      const cfg = await cfgRepo.getOrCreateDefaults(orgId);
       const hasDealAmountMapping = !!(cfg.dealAmountColumnId && String(cfg.dealAmountColumnId).trim().length > 0);
 
       // Fetch ALL leads that entered in the window (assigned)
-      const allLeads = await factRepo.listSince(since);
-      
+      const allLeads = await factRepo.listSince(orgId, since);
+
       // Filter by boardId if provided
       const filteredLeads = boardId
         ? allLeads.filter((lead) => lead.boardId === boardId)
         : allLeads;
 
       // Calculate overall KPIs
-      const assigned = filteredLeads.filter((lead) => lead.assignedUserId).length; // All leads with assigned user
+      const leadCount = filteredLeads.length; // All leads regardless of assignment
+      const assigned = leadCount; // Show all leads in the 'Total Leads' KPI
       const closedWonLeads = filteredLeads.filter((lead) => lead.closedWonAt && lead.assignedUserId); // Closed won leads
       const closedWon = closedWonLeads.length;
       const conversionRate = assigned > 0 ? closedWon / assigned : 0;
@@ -108,11 +110,11 @@ export function outcomesRoutes() {
         }
         const agentData = agentMap.get(agentId)!;
         agentData.assigned++;
-        
+
         // Only count closed won and revenue for closed deals
         if (lead.closedWonAt) {
           agentData.closedWon++;
-          
+
           if (hasDealAmountMapping && lead.dealAmount) {
             const dealAmt = Number(lead.dealAmount);
             if (Number.isFinite(dealAmt) && dealAmt > 0) {
@@ -144,7 +146,7 @@ export function outcomesRoutes() {
       // Build perAgent array
       const perAgent = Array.from(agentMap.entries()).map(([agentId, data]) => {
         const convRate = data.assigned > 0 ? data.closedWon / data.assigned : 0;
-        
+
         let medianClose: number | null = null;
         if (data.closeTimes.length > 0) {
           const sorted = [...data.closeTimes].sort((a, b) => a - b);
@@ -170,7 +172,7 @@ export function outcomesRoutes() {
           revenue: hasDealAmountMapping ? data.revenue : null,
           avgDeal: hasDealAmountMapping ? avgDealAgent : null,
           medianTimeToCloseDays: medianClose,
-          
+
           // Additional metrics from Agent Profile
           avgResponseTime: profile?.avgResponseTime ?? null,
           availability: profile?.availability ?? null,
@@ -193,6 +195,7 @@ export function outcomesRoutes() {
         mode,
         boardId,
         kpis: {
+          totalLeads: leadCount,
           assigned,
           closedWon,
           conversionRate,

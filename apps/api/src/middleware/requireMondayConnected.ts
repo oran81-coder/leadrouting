@@ -3,10 +3,17 @@ import { PrismaMondayCredentialRepo } from "../../../../packages/modules/monday-
 
 /**
  * Guard: Monday must be connected (credentials stored) before allowing wizard / mapping endpoints.
+ * Updated to use orgId from req.user instead of hardcoded value.
  */
-export function requireMondayConnected(orgId: string) {
+export function requireMondayConnected(fallbackOrgId?: string) {
   const repo = new PrismaMondayCredentialRepo();
-  return async (_req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    // Get orgId from authenticated user (set by requireApiKey middleware)
+    // Fall back to hardcoded orgId for backward compatibility
+    const orgId = (req.user as any)?.orgId || fallbackOrgId || "org_1";
+    
+    console.log("[requireMondayConnected] Checking Monday connection for orgId:", orgId);
+    
     const s = await repo.status(orgId);
     if (!s.connected) {
       return res.status(400).json({

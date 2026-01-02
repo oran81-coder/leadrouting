@@ -15,43 +15,45 @@
  */
 
 import { PrismaLeadFactRepo } from "../../../../../apps/api/src/infrastructure/leadFact.repo";
+import { PrismaMondayUserCacheRepo } from "../../../../../packages/modules/monday-integration/src/infrastructure/mondayUserCache.repo";
 import { calculateAgentDomainProfile, type AgentDomainProfile } from "./agentDomain.learner";
 
 export interface AgentProfile {
   agentUserId: string;
   agentName?: string;
   orgId: string;
-  
+
   // Performance Metrics
   conversionRate: number | null; // 0-1 scale
   totalLeadsHandled: number;
   totalLeadsConverted: number;
-  
+
   // Revenue Metrics
   avgDealSize: number | null; // USD
   totalRevenue: number;
-  
+
   // Speed Metrics
   avgResponseTime: number | null; // Seconds to first contact
-  
+  avgTimeToClose: number | null; // Seconds from entered to closed won
+
   // Capacity Metrics
   availability: number; // 0-1 scale (1 = fully available)
   currentActiveLeads: number;
   dailyLeadsToday: number;
-  
+
   // Momentum Metrics
   hotStreakCount: number; // Deals closed in last N hours
   hotStreakActive: boolean;
-  
+
   // Burnout Indicators
   burnoutScore: number; // 0-100 (0 = fresh, 100 = burned out)
   timeSinceLastWin: number | null; // Milliseconds
   timeSinceLastActivity: number | null; // Milliseconds
-  
+
   // Domain Expertise
   industryScores: Record<string, number>; // Industry → 0-100 score
   domainProfile: AgentDomainProfile | null;
-  
+
   // Metadata
   computedAt: Date;
   dataWindowDays: number; // Time window used for calculations
@@ -62,18 +64,18 @@ export interface AgentProfilerConfig {
   conversionWindowDays: number; // Default: 90
   avgDealWindowDays: number; // Default: 90
   responseWindowDays: number; // Default: 30
-  
+
   // Hot streak settings
   hotStreakWindowHours: number; // Default: 168 (7 days)
   hotStreakMinDeals: number; // Default: 3
-  
+
   // Burnout settings
   burnoutWinDecayHours: number; // Default: 336 (14 days)
   burnoutActivityDecayHours: number; // Default: 168 (7 days)
-  
+
   // Availability settings
   dailyLeadThreshold: number; // Default: 20
-  
+
   // Domain expertise
   minLeadsForDomain: number; // Default: 5
 }
@@ -105,18 +107,28 @@ export async function calculateAgentProfile(
 ): Promise<AgentProfile> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const leadRepo = new PrismaLeadFactRepo();
+  const userCacheRepo = new PrismaMondayUserCacheRepo();
   const now = new Date();
-  
+
+  // Fetch agent name from Monday User Cache
+  let agentName: string | undefined = undefined;
+  try {
+    const cachedUser = await userCacheRepo.getByUserId(orgId, agentUserId);
+    agentName = cachedUser?.name || undefined;
+  } catch (error) {
+    console.warn(`[AgentProfiler] Could not fetch name for agent ${agentUserId}:`, error);
+  }
+
   // Time windows
   const conversionSince = new Date(now.getTime() - cfg.conversionWindowDays * 24 * 60 * 60 * 1000);
   const dealSizeSince = new Date(now.getTime() - cfg.avgDealWindowDays * 24 * 60 * 60 * 1000);
   const responseSince = new Date(now.getTime() - cfg.responseWindowDays * 24 * 60 * 60 * 1000);
   const hotStreakSince = new Date(now.getTime() - cfg.hotStreakWindowHours * 60 * 60 * 1000);
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  
+
   // Fetch all leads for agent in relevant windows
   const allLeads = await leadRepo.listByAgent(orgId, agentUserId);
-  
+
   // 1. CONVERSION RATE
   const leadsInConversionWindow = allLeads.filter(
     l => l.enteredAt && new Date(l.enteredAt) >= conversionSince
@@ -124,18 +136,32 @@ export async function calculateAgentProfile(
   const totalLeadsHandled = leadsInConversionWindow.length;
   const totalLeadsConverted = leadsInConversionWindow.filter(l => l.closedWonAt).length;
   const conversionRate = totalLeadsHandled > 0 ? totalLeadsConverted / totalLeadsHandled : null;
-  
+
   // 2. AVG DEAL SIZE
   const dealsInWindow = allLeads.filter(
     l => l.closedWonAt && new Date(l.closedWonAt) >= dealSizeSince && l.dealAmount
   );
   const totalRevenue = dealsInWindow.reduce((sum, l) => sum + (l.dealAmount || 0), 0);
   const avgDealSize = dealsInWindow.length > 0 ? totalRevenue / dealsInWindow.length : null;
-  
-  // 3. RESPONSE TIME
+
+  // 3. AVG TIME TO CLOSE & RESPONSE TIME
+  const closedWonLeads = allLeads.filter(
+    l => l.closedWonAt && l.enteredAt && new Date(l.closedWonAt) >= dealSizeSince // Reuse window or use conversion window? Using dealSize since it's typically longer
+  );
+  let avgTimeToClose: number | null = null;
+  if (closedWonLeads.length > 0) {
+    const totalTimeMs = closedWonLeads.reduce((sum, l) => {
+      const entered = new Date(l.enteredAt!).getTime();
+      const closed = new Date(l.closedWonAt!).getTime();
+      return sum + (closed - entered);
+    }, 0);
+    avgTimeToClose = totalTimeMs / closedWonLeads.length / 1000; // Seconds
+  }
+
+  // 4. RESPONSE TIME
   const leadsWithResponse = allLeads.filter(
-    l => l.enteredAt && l.firstTouchAt && 
-         new Date(l.enteredAt) >= responseSince
+    l => l.enteredAt && l.firstTouchAt &&
+      new Date(l.enteredAt) >= responseSince
   );
   let avgResponseTime: number | null = null;
   if (leadsWithResponse.length > 0) {
@@ -146,7 +172,7 @@ export async function calculateAgentProfile(
     }, 0);
     avgResponseTime = totalResponseMs / leadsWithResponse.length / 1000; // Convert to seconds
   }
-  
+
   // 4. AVAILABILITY (current active leads / threshold)
   const activeLeads = await leadRepo.countActiveLeadsByAgent(
     orgId,
@@ -157,27 +183,27 @@ export async function calculateAgentProfile(
   );
   const currentActiveLeads = activeLeads;
   const availability = Math.max(0, 1 - (currentActiveLeads / cfg.dailyLeadThreshold));
-  
+
   // 5. DAILY QUOTA
   const dailyLeadsToday = await leadRepo.countByAgentSince(orgId, agentUserId, todayStart);
-  
+
   // 6. HOT STREAK
   const recentWins = allLeads.filter(
     l => l.closedWonAt && new Date(l.closedWonAt) >= hotStreakSince
   );
   const hotStreakCount = recentWins.length;
   const hotStreakActive = hotStreakCount >= cfg.hotStreakMinDeals;
-  
+
   // 7. BURNOUT SCORE
   let burnoutScore = 0;
   let timeSinceLastWin: number | null = null;
   let timeSinceLastActivity: number | null = null;
-  
+
   // Find most recent win
   const winsWithDates = allLeads
     .filter(l => l.closedWonAt)
     .sort((a, b) => new Date(b.closedWonAt!).getTime() - new Date(a.closedWonAt!).getTime());
-  
+
   if (winsWithDates.length > 0) {
     timeSinceLastWin = now.getTime() - new Date(winsWithDates[0].closedWonAt!).getTime();
     const hoursSinceWin = timeSinceLastWin / (1000 * 60 * 60);
@@ -186,7 +212,7 @@ export async function calculateAgentProfile(
   } else {
     burnoutScore += 60; // No wins = moderate burnout contribution
   }
-  
+
   // Find most recent activity (any lead touched)
   const activitiesWithDates = allLeads
     .filter(l => l.firstTouchAt || l.updatedAt)
@@ -195,7 +221,7 @@ export async function calculateAgentProfile(
       const bTime = b.firstTouchAt ? new Date(b.firstTouchAt) : new Date(b.updatedAt);
       return bTime.getTime() - aTime.getTime();
     });
-  
+
   if (activitiesWithDates.length > 0) {
     const lastActivity = activitiesWithDates[0].firstTouchAt || activitiesWithDates[0].updatedAt;
     timeSinceLastActivity = now.getTime() - new Date(lastActivity).getTime();
@@ -205,55 +231,57 @@ export async function calculateAgentProfile(
   } else {
     burnoutScore += 40; // No activity = moderate burnout contribution
   }
-  
+
   burnoutScore = Math.min(100, Math.round(burnoutScore));
-  
+
   // 8. DOMAIN EXPERTISE
   const domainProfile = await calculateAgentDomainProfile(
     agentUserId,
     orgId,
     cfg.minLeadsForDomain
   );
-  
+
   const industryScores: Record<string, number> = {};
   for (const [industry, expertise] of domainProfile.domains.entries()) {
     industryScores[industry] = expertise.expertiseScore;
   }
-  
+
   return {
     agentUserId,
+    agentName,
     orgId,
-    
+
     // Performance
     conversionRate,
     totalLeadsHandled,
     totalLeadsConverted,
-    
+
     // Revenue
     avgDealSize,
     totalRevenue,
-    
+
     // Speed
     avgResponseTime,
-    
+    avgTimeToClose,
+
     // Capacity
     availability,
     currentActiveLeads,
     dailyLeadsToday,
-    
+
     // Momentum
     hotStreakCount,
     hotStreakActive,
-    
+
     // Burnout
     burnoutScore,
     timeSinceLastWin,
     timeSinceLastActivity,
-    
+
     // Domain
     industryScores,
     domainProfile,
-    
+
     // Metadata
     computedAt: now,
     dataWindowDays: cfg.conversionWindowDays,
@@ -273,17 +301,18 @@ export async function calculateAllAgentProfiles(
   config: Partial<AgentProfilerConfig> = {}
 ): Promise<AgentProfile[]> {
   const leadRepo = new PrismaLeadFactRepo();
-  
+
   // Get all unique agent user IDs
-  const agentUserIds = await leadRepo.listAgentsWithFacts();
-  
+  const agentUserIds = await leadRepo.listAgentsWithFacts(orgId);
+  console.log(`[AgentProfiler] Found ${agentUserIds.length} agents with facts for org ${orgId}`);
+
   // Calculate profiles in parallel
   const profiles = await Promise.all(
-    agentUserIds.map(agentUserId => 
+    agentUserIds.map(agentUserId =>
       calculateAgentProfile(agentUserId, orgId, config)
     )
   );
-  
+
   return profiles;
 }
 
@@ -315,23 +344,23 @@ export function isAgentEligible(profile: AgentProfile, config: Partial<AgentProf
   reason?: string;
 } {
   const cfg = { ...DEFAULT_CONFIG, ...config };
-  
+
   // Check availability
   if (profile.availability <= 0) {
     return { eligible: false, reason: 'Agent at capacity' };
   }
-  
+
   // Check daily quota
   if (profile.dailyLeadsToday >= cfg.dailyLeadThreshold) {
     return { eligible: false, reason: 'Daily lead threshold reached' };
   }
-  
+
   // Check burnout (optional - could be soft filter)
   if (profile.burnoutScore > 90) {
     // Don't hard block, but this could be used in scoring
     // return { eligible: false, reason: 'High burnout indicator' };
   }
-  
+
   return { eligible: true };
 }
 
@@ -344,24 +373,24 @@ export function compareAgents(a: AgentProfile, b: AgentProfile): number {
   if (a.availability !== b.availability) {
     return b.availability - a.availability;
   }
-  
+
   // 2. Lower workload wins
   if (a.currentActiveLeads !== b.currentActiveLeads) {
     return a.currentActiveLeads - b.currentActiveLeads;
   }
-  
+
   // 3. Better conversion rate wins
   if (a.conversionRate !== null && b.conversionRate !== null) {
     if (a.conversionRate !== b.conversionRate) {
       return b.conversionRate - a.conversionRate;
     }
   }
-  
+
   // 4. Hot streak wins
   if (a.hotStreakActive !== b.hotStreakActive) {
     return a.hotStreakActive ? -1 : 1;
   }
-  
+
   // 5. Random (caller should handle this)
   return 0;
 }

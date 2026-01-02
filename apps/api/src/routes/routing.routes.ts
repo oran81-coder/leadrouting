@@ -51,7 +51,12 @@ export function routingRoutes() {
   const agentProfileRepo = new PrismaAgentProfileRepo();
   const metricsConfigRepo = new PrismaMetricsConfigRepo();
 
-  const ORG_ID = "org_1"; // TODO auth/JWT
+  /**
+   * Extract orgId from authenticated user
+   */
+  function getOrgId(req: any): string {
+    return req.orgId || req.user?.orgId || process.env.DEFAULT_ORG_ID || "cmjt563ps000037hg6i4dvl7m";
+  }
 
   /**
    * Safe audit logging helper (non-fatal)
@@ -75,11 +80,11 @@ export function routingRoutes() {
       const cv = byId.get((ref as any).columnId);
       if (!cv) continue;
       if (cv.type === 'status' || cv.type === 'dropdown') {
-        try {
-          raw[fieldId] = cv.value ? JSON.parse(cv.value) : null;
-        } catch {
-          raw[fieldId] = cv.text ?? null;
-        }
+        // For status/dropdown columns, Monday returns:
+        // - cv.text: the human-readable label (e.g., "High Priority")
+        // - cv.value: JSON with { index, post_id, changed_at }
+        // We need the label for normalization, so use cv.text
+        raw[fieldId] = cv.text ?? null;
       } else {
         raw[fieldId] = cv.text ?? null;
       }
@@ -89,6 +94,8 @@ export function routingRoutes() {
 
   r.post("/evaluate", async (req, res) => {
     try {
+      const ORG_ID = getOrgId(req);
+
       if (process.env.DEBUG_PREVIEW === "1") {
         console.log("[routing/evaluate] req.body:", JSON.stringify(req.body));
         console.log("[routing/evaluate] hasItem:", !!(req.body && req.body.item));
@@ -96,7 +103,7 @@ export function routingRoutes() {
       }
 
       const routingState = await stateRepo.get(ORG_ID);
-      
+
       // Phase 1.2: Version pinning when routing enabled
       let schema: any;
       let mapping: any;
@@ -108,17 +115,17 @@ export function routingRoutes() {
         if (process.env.DEBUG_PREVIEW === "1") {
           console.log("[routing/evaluate] Using PINNED versions from routing state");
         }
-        
+
         schema = await schemaRepo.getByVersion(ORG_ID, routingState.schemaVersion);
         mapping = await mappingRepo.getByVersion(ORG_ID, routingState.mappingVersion);
-        rules = routingState.rulesVersion != null 
+        rules = routingState.rulesVersion != null
           ? await rulesRepo.getByVersion(ORG_ID, routingState.rulesVersion)
           : null;
         effectiveSource = "pinned";
 
         if (!schema || !mapping) {
-          return res.status(400).json({ 
-            ok: false, 
+          return res.status(400).json({
+            ok: false,
             error: "Pinned versions not found in DB. Schema or mapping may have been deleted.",
             requestedVersions: {
               schemaVersion: routingState.schemaVersion,
@@ -132,7 +139,7 @@ export function routingRoutes() {
         if (process.env.DEBUG_PREVIEW === "1") {
           console.log("[routing/evaluate] Using LATEST versions");
         }
-        
+
         schema = await schemaRepo.getLatest(ORG_ID);
         mapping = await mappingRepo.getLatest(ORG_ID);
         rules = await rulesRepo.getLatest(ORG_ID);
@@ -163,9 +170,9 @@ export function routingRoutes() {
         }
         raw = req.body.lead;
       } else {
-        return res.status(400).json({ 
-          ok: false, 
-          error: "Invalid body. Expected { item: {...} } (Monday mock) or { lead: { <internalFieldId>: value } }" 
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid body. Expected { item: {...} } (Monday mock) or { lead: { <internalFieldId>: value } }"
         });
       }
 
@@ -254,6 +261,8 @@ export function routingRoutes() {
 
   r.post("/execute", async (req, res) => {
     try {
+      const ORG_ID = getOrgId(req);
+
       if (process.env.DEBUG_PREVIEW === "1") {
         console.log("[routing/execute] req.body:", JSON.stringify(req.body));
         console.log("[routing/execute] hasItem:", !!(req.body && req.body.item));
@@ -261,7 +270,7 @@ export function routingRoutes() {
       }
 
       const routingState = await stateRepo.get(ORG_ID);
-      
+
       // Phase 1.3: Version pinning (same logic as evaluate)
       let schema: any;
       let mapping: any;
@@ -273,17 +282,17 @@ export function routingRoutes() {
         if (process.env.DEBUG_PREVIEW === "1") {
           console.log("[routing/execute] Using PINNED versions from routing state");
         }
-        
+
         schema = await schemaRepo.getByVersion(ORG_ID, routingState.schemaVersion);
         mapping = await mappingRepo.getByVersion(ORG_ID, routingState.mappingVersion);
-        rules = routingState.rulesVersion != null 
+        rules = routingState.rulesVersion != null
           ? await rulesRepo.getByVersion(ORG_ID, routingState.rulesVersion)
           : null;
         effectiveSource = "pinned";
 
         if (!schema || !mapping) {
-          return res.status(400).json({ 
-            ok: false, 
+          return res.status(400).json({
+            ok: false,
             error: "Pinned versions not found in DB. Schema or mapping may have been deleted.",
             requestedVersions: {
               schemaVersion: routingState.schemaVersion,
@@ -297,7 +306,7 @@ export function routingRoutes() {
         if (process.env.DEBUG_PREVIEW === "1") {
           console.log("[routing/execute] Using LATEST versions");
         }
-        
+
         schema = await schemaRepo.getLatest(ORG_ID);
         mapping = await mappingRepo.getLatest(ORG_ID);
         rules = await rulesRepo.getLatest(ORG_ID);
@@ -322,7 +331,7 @@ export function routingRoutes() {
         }
         raw = mapMondayItemToInternalRaw(req.body.item, mapping as any);
         inputSource = "mock_item";
-        itemId = req.body.item.id ?? null;
+        itemId = req.body.item.itemId ?? req.body.item.id ?? null;
       } else if (req.body && req.body.lead) {
         if (process.env.DEBUG_PREVIEW === "1") {
           console.log("[routing/execute] DIRECT LEAD branch - using internal format");
@@ -330,9 +339,9 @@ export function routingRoutes() {
         raw = req.body.lead;
         inputSource = "direct_lead";
       } else {
-        return res.status(400).json({ 
-          ok: false, 
-          error: "Invalid body. Expected { item: {...} } (Monday mock) or { lead: { <internalFieldId>: value } }" 
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid body. Expected { item: {...} } (Monday mock) or { lead: { <internalFieldId>: value } }"
         });
       }
 
@@ -340,8 +349,13 @@ export function routingRoutes() {
         return res.status(400).json({ ok: false, error: "Invalid raw data after parsing" });
       }
 
+      console.log("[routing/execute] Raw data after mapping:", JSON.stringify(raw, null, 2));
+      console.log("[routing/execute] Schema fields for lead:",
+        (schema as any).fields.filter((f: any) => f.entity === "lead").map((f: any) => `${f.id} (${f.type}, required: ${f.required})`));
+
       const norm = normalizeEntityRecord(schema as any, "lead", raw as any);
       if (norm.errors.length) {
+        console.log("[routing/execute] Normalization errors:", JSON.stringify(norm.errors, null, 2));
         return res.status(400).json({ ok: false, error: "Normalization failed", normalizationErrors: norm.errors });
       }
 
@@ -391,8 +405,8 @@ export function routingRoutes() {
       // Phase 1.5: Advanced Routing - Use Scoring Engine + Explainability
       // Load agent profiles and metrics config
       const agentProfiles = await agentProfileRepo.listByOrg(ORG_ID);
-      const metricsConfig = await metricsConfigRepo.getOrCreateDefaults();
-      
+      const metricsConfig = await metricsConfigRepo.getOrCreateDefaults(ORG_ID);
+
       // Execute advanced routing (will use Scoring Engine if profiles available, else fallback)
       const evalResult = await executeAdvancedRouting(
         ORG_ID,
@@ -406,8 +420,10 @@ export function routingRoutes() {
 
       // Phase 1.4: Check routing mode and branch accordingly
       if (routingState?.isEnabled) {
+        console.log("[routing/execute] RoutingState is ENABLED, checking mode...");
         const settings = await settingsRepo.get(ORG_ID);
-        
+        console.log("[routing/execute] Settings mode:", settings?.mode);
+
         if (settings.mode === "MANUAL_APPROVAL") {
           // MANUAL_APPROVAL: Create proposal
           if (inputSource === "direct_lead") {
@@ -420,6 +436,8 @@ export function routingRoutes() {
           const boardId = req.body.item?.boardId ?? "mock_board";
           const itemName = req.body.item?.name ?? null; // Extract item name
           const idempotencyKey = `${boardId}_${itemId}_${(schema as any).version}_${(mapping as any).version}_${(rules as any).version}`;
+
+          console.log("[routing/execute] Creating MANUAL_APPROVAL proposal...", { boardId, itemId, itemName, idempotencyKey });
 
           const proposal = await proposalRepo.create({
             orgId: ORG_ID,
@@ -460,7 +478,7 @@ export function routingRoutes() {
           });
 
         } else if (settings.mode === "AUTO") {
-          // AUTO: Simulate apply (writeback disabled in Phase 1.4)
+          // AUTO: Apply immediately
           if (inputSource === "direct_lead") {
             return res.status(400).json({
               ok: false,
@@ -473,6 +491,48 @@ export function routingRoutes() {
 
           const guard = await applyRepo.tryBegin(ORG_ID, idempotencyKey);
 
+          let writebackResult = { attempted: false, success: false, error: null as string | null };
+
+          // Only attempt writeback if we have a match and a valid assignee
+          const assigneeValue = evalResult.selectedRule?.action?.value;
+
+          if (evalResult.matched && assigneeValue) {
+            try {
+              console.log(`[routing/execute] AUTO mode: Attempting writeback for item ${itemId} to user ${assigneeValue}`);
+
+              // 1. Init Monday Client
+              const client = await createMondayClientForOrg(ORG_ID);
+
+              // 2. Get Targets
+              const targets = (mapping as any).writebackTargets;
+              if (!targets || !targets.assignedAgent) {
+                throw new Error("Invalid mapping configuration: missing writebackTargets.assignedAgent");
+              }
+
+              // 3. Apply
+              await applyAssignmentToMonday(client, targets, {
+                boardId,
+                itemId: itemId!,
+                assigneeValue: String(assigneeValue),
+                reason: `Auto-assigned by rule: ${evalResult.selectedRule!.name}`,
+                status: (mapping as any).statusConfig?.connectedStatusValue // Optional: update status if configured
+              });
+
+              writebackResult.attempted = true;
+              writebackResult.success = true;
+              console.log(`[routing/execute] AUTO writeback successful`);
+
+            } catch (wbError: any) {
+              console.error(`[routing/execute] AUTO writeback failed:`, wbError);
+              writebackResult.attempted = true;
+              writebackResult.success = false;
+              writebackResult.error = wbError?.message || String(wbError);
+              // Note: We do NOT fail the whole request, we just report writeback failure
+            }
+          } else {
+            console.log(`[routing/execute] AUTO mode: No match or no assignee, skipping writeback`);
+          }
+
           await safeAudit({
             orgId: ORG_ID,
             actorUserId: "system",
@@ -480,11 +540,12 @@ export function routingRoutes() {
             entityType: "Lead",
             entityId: itemId,
             before: null,
-            after: { 
-              idempotencyKey, 
-              matched: evalResult.matched, 
-              assignedTo: evalResult.selectedRule?.action?.value,
-              idempotent: guard === "ALREADY"
+            after: {
+              idempotencyKey,
+              matched: evalResult.matched,
+              assignedTo: assigneeValue,
+              idempotent: guard === "ALREADY",
+              writeback: writebackResult
             },
           });
 
@@ -493,12 +554,8 @@ export function routingRoutes() {
             mode: "auto",
             applied: true,
             matchedRuleId: evalResult.selectedRule?.id ?? null,
-            assignedTo: evalResult.selectedRule?.action?.value ?? null,
-            writeback: {
-              attempted: false,
-              reason: "disabled_in_phase1_4",
-              note: "Monday writeback will be enabled in Phase 1.5 after validation"
-            },
+            assignedTo: assigneeValue ?? null,
+            writeback: writebackResult,
             idempotent: guard === "ALREADY",
             effectiveVersions: {
               schemaVersion: (schema as any).version,
@@ -511,6 +568,7 @@ export function routingRoutes() {
       }
 
       // Phase 1.3 fallback: execute-lite mode (routing disabled or mode not configured)
+      console.log("[routing/execute] Routing disabled or mode not configured - using execute_lite");
       await safeAudit({
         orgId: ORG_ID,
         actorUserId: "system",
@@ -553,226 +611,228 @@ export function routingRoutes() {
   });
 
 
-/**
- * Routing Preview (Admin-only): simulation mode
- * - Reads N recent leads from Lead Boards
- * - Computes agent scores + breakdown (0..10)
- * - NO writeback, NO persistence, NO approvals
- */
-r.post("/preview", async (req, res) => {
-  const Body = z.object({ limit: z.number().int().min(1).max(50).default(10) });
-  const parsed = Body.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ ok: false, error: "INVALID_BODY", details: parsed.error.flatten() });
+  /**
+   * Routing Preview (Admin-only): simulation mode
+   * - Reads N recent leads from Lead Boards
+   * - Computes agent scores + breakdown (0..10)
+   * - NO writeback, NO persistence, NO approvals
+   */
+  r.post("/preview", async (req, res) => {
+    const ORG_ID = getOrgId(req);
 
-  const limit = parsed.data.limit;
+    const Body = z.object({ limit: z.number().int().min(1).max(50).default(10) });
+    const parsed = Body.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "INVALID_BODY", details: parsed.error.flatten() });
 
-  const metricsCfgRepo = new PrismaMetricsConfigRepo();
-  const metricsCfg = await metricsCfgRepo.getOrCreateDefaults();
-  if (!metricsCfg.leadBoardIds || String(metricsCfg.leadBoardIds).trim().length === 0) {
-    return res.status(400).json({ ok: false, error: "LEAD_BOARDS_NOT_CONFIGURED" });
-  }
+    const limit = parsed.data.limit;
 
-  const leadBoardIds = String(metricsCfg.leadBoardIds)
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  const client = await createMondayClientForOrg(ORG_ID);
-
-  // Fetch samples (distribute limit across boards)
-  const perBoard = Math.max(1, Math.ceil(limit / Math.max(1, leadBoardIds.length)));
-  const samples = await client.fetchBoardSamples(leadBoardIds as any, perBoard);
-
-  const allItems: Array<{ boardId: string; item: any }> = [];
-  for (const b of samples) {
-    for (const it of b.items ?? []) allItems.push({ boardId: String(b.boardId), item: it });
-  }
-
-  function parsePeopleUserId(col: any): string | null {
-    const raw = col?.value ?? null;
-    if (!raw) return null;
-    try {
-      const j = JSON.parse(raw);
-      const persons = (j?.personsAndTeams ?? j?.persons_and_teams ?? []) as any[];
-      const first = persons?.[0];
-      if (!first) return null;
-      return first?.id ? String(first.id) : null;
-    } catch {
-      return null;
+    const metricsCfgRepo = new PrismaMetricsConfigRepo();
+    const metricsCfg = await metricsCfgRepo.getOrCreateDefaults(ORG_ID);
+    if (!metricsCfg.leadBoardIds || String(metricsCfg.leadBoardIds).trim().length === 0) {
+      return res.status(400).json({ ok: false, error: "LEAD_BOARDS_NOT_CONFIGURED" });
     }
-  }
 
-  function findText(cvs: any[], colId?: string | null): string | null {
-    if (!colId) return null;
-    const c = cvs.find((x: any) => String(x.id) === String(colId));
-    const t = (c?.text ?? "").trim();
-    return t || null;
-  }
+    const leadBoardIds = String(metricsCfg.leadBoardIds)
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
 
-  function parseIndustryPerf(jsonStr: string): Record<string, number> {
-    try {
-      const j = JSON.parse(jsonStr || "{}");
-      if (!j || typeof j !== "object") return {};
-      const out: Record<string, number> = {};
-      for (const [k, v] of Object.entries(j as any)) {
-        const n = Number(v);
-        if (Number.isFinite(n)) out[String(k).toLowerCase()] = n;
+    const client = await createMondayClientForOrg(ORG_ID);
+
+    // Fetch samples (distribute limit across boards)
+    const perBoard = Math.max(1, Math.ceil(limit / Math.max(1, leadBoardIds.length)));
+    const samples = await client.fetchBoardSamples(leadBoardIds as any, perBoard);
+
+    const allItems: Array<{ boardId: string; item: any }> = [];
+    for (const b of samples) {
+      for (const it of b.items ?? []) allItems.push({ boardId: String(b.boardId), item: it });
+    }
+
+    function parsePeopleUserId(col: any): string | null {
+      const raw = col?.value ?? null;
+      if (!raw) return null;
+      try {
+        const j = JSON.parse(raw);
+        const persons = (j?.personsAndTeams ?? j?.persons_and_teams ?? []) as any[];
+        const first = persons?.[0];
+        if (!first) return null;
+        return first?.id ? String(first.id) : null;
+      } catch {
+        return null;
       }
-      return out;
-    } catch {
-      return {};
     }
-  }
 
-  function clamp01(x: number) {
-    if (x < 0) return 0;
-    if (x > 1) return 1;
-    return x;
-  }
+    function findText(cvs: any[], colId?: string | null): string | null {
+      if (!colId) return null;
+      const c = cvs.find((x: any) => String(x.id) === String(colId));
+      const t = (c?.text ?? "").trim();
+      return t || null;
+    }
 
-  const AVG_DEAL_REF = Number(optionalEnv("PREVIEW_AVG_DEAL_REF", "20000")) || 20000;
-  const RESPONSE_REF_MINS = Number(optionalEnv("PREVIEW_RESPONSE_REF_MINS", "240")) || 240;
+    function parseIndustryPerf(jsonStr: string): Record<string, number> {
+      try {
+        const j = JSON.parse(jsonStr || "{}");
+        if (!j || typeof j !== "object") return {};
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(j as any)) {
+          const n = Number(v);
+          if (Number.isFinite(n)) out[String(k).toLowerCase()] = n;
+        }
+        return out;
+      } catch {
+        return {};
+      }
+    }
 
-  // Build list of candidate agents based on metrics snapshots present in DB
-  const prisma = getPrisma();
-  const windowDays = Array.from(new Set([metricsCfg.conversionWindowDays, metricsCfg.avgDealWindowDays, metricsCfg.responseWindowDays]));
-  const agentRows = await prisma.agentMetricsSnapshot.findMany({
-    where: { orgId: ORG_ID, windowDays: { in: windowDays as any } },
-    select: { agentUserId: true },
-    distinct: ["agentUserId"],
-  });
-  const agentIds = agentRows.map((r) => String(r.agentUserId)); 
+    function clamp01(x: number) {
+      if (x < 0) return 0;
+      if (x > 1) return 1;
+      return x;
+    }
 
-  async function loadAgent(agentUserId: string) {
-    const snaps = await prisma.agentMetricsSnapshot.findMany({
-      where: { orgId: ORG_ID, agentUserId },
-      orderBy: { windowDays: "asc" },
+    const AVG_DEAL_REF = Number(optionalEnv("PREVIEW_AVG_DEAL_REF", "20000")) || 20000;
+    const RESPONSE_REF_MINS = Number(optionalEnv("PREVIEW_RESPONSE_REF_MINS", "240")) || 240;
+
+    // Build list of candidate agents based on metrics snapshots present in DB
+    const prisma = getPrisma();
+    const windowDays = Array.from(new Set([metricsCfg.conversionWindowDays, metricsCfg.avgDealWindowDays, metricsCfg.responseWindowDays]));
+    const agentRows = await prisma.agentMetricsSnapshot.findMany({
+      where: { orgId: ORG_ID, windowDays: { in: windowDays as any } },
+      select: { agentUserId: true },
+      distinct: ["agentUserId"],
     });
-    const byWindow = new Map<number, any>();
-    for (const s of snaps) byWindow.set(Number(s.windowDays), s);
+    const agentIds = agentRows.map((r) => String(r.agentUserId));
 
-    const conv = byWindow.get(Number(metricsCfg.conversionWindowDays)) ?? byWindow.get(windowDays[0]);
-    const avg = byWindow.get(Number(metricsCfg.avgDealWindowDays)) ?? byWindow.get(windowDays[0]);
-    const resp = byWindow.get(Number(metricsCfg.responseWindowDays)) ?? byWindow.get(windowDays[0]);
+    async function loadAgent(agentUserId: string) {
+      const snaps = await prisma.agentMetricsSnapshot.findMany({
+        where: { orgId: ORG_ID, agentUserId },
+        orderBy: { windowDays: "asc" },
+      });
+      const byWindow = new Map<number, any>();
+      for (const s of snaps) byWindow.set(Number(s.windowDays), s);
 
-    // name resolution: try cache; fallback to userId string
-    const cached = await prisma.mondayUserCache.findFirst({ where: { orgId: ORG_ID, userId: agentUserId } });
-    const name = cached?.name ? String(cached.name) : agentUserId;
+      const conv = byWindow.get(Number(metricsCfg.conversionWindowDays)) ?? byWindow.get(windowDays[0]);
+      const avg = byWindow.get(Number(metricsCfg.avgDealWindowDays)) ?? byWindow.get(windowDays[0]);
+      const resp = byWindow.get(Number(metricsCfg.responseWindowDays)) ?? byWindow.get(windowDays[0]);
 
-    return {
-      agentUserId,
-      name,
-      conv,
-      avg,
-      resp,
-      anySnap: snaps[0] ?? null,
-    };
-  }
+      // name resolution: try cache; fallback to userId string
+      const cached = await prisma.mondayUserCache.findFirst({ where: { orgId: ORG_ID, userId: agentUserId } });
+      const name = cached?.name ? String(cached.name) : agentUserId;
 
-  const agents = await Promise.all(agentIds.map(loadAgent));
-
-  // Filter leads: skip leads that already have assignee in configured people column
-  const leads = allItems
-    .map((x) => {
-      const cvs = x.item.column_values ?? [];
-      const alreadyAssigned =
-        metricsCfg.assignedPeopleColumnId ? !!parsePeopleUserId(cvs.find((c: any) => String(c.id) === String(metricsCfg.assignedPeopleColumnId))) : false;
-
-      const industry = metricsCfg.enableIndustryPerf === false ? null : findText(cvs, metricsCfg.industryColumnId);
       return {
-        boardId: x.boardId,
-        itemId: String(x.item.id),
-        name: String(x.item.name ?? ""),
-        industry,
-        alreadyAssigned,
+        agentUserId,
+        name,
+        conv,
+        avg,
+        resp,
+        anySnap: snaps[0] ?? null,
       };
-    })
-    .filter((l) => !l.alreadyAssigned)
-    .slice(0, limit);
-
-  // compute scores
-  function computeScore(leadIndustry: string | null, a: any) {
-    const ind = (leadIndustry ?? "").trim().toLowerCase();
-
-    const perf = parseIndustryPerf(String(a.anySnap?.industryPerfJson ?? "{}"));
-    const industryRate = ind && perf[ind] != null ? clamp01(Number(perf[ind])) : 0.5; // fallback 0.5
-
-    const conversionRate = clamp01(Number(a.conv?.conversionRate ?? 0));
-    const avgDeal = Math.max(0, Number(a.avg?.avgDealSize ?? 0));
-    const avgDealNorm = clamp01(avgDeal / AVG_DEAL_REF);
-
-    const isHot = a.anySnap?.isHot ? 1 : 0;
-    const hotNorm = isHot ? 1 : clamp01(Number(a.anySnap?.hotDealsCount ?? 0) / Math.max(1, Number(metricsCfg.hotStreakMinDeals ?? 1)));
-
-    const respMins = Math.max(0, Number(a.resp?.medianResponseMinutes ?? 0));
-    const respNorm = 1 - clamp01(respMins / RESPONSE_REF_MINS);
-
-    const burnout = clamp01(Number(a.anySnap?.burnoutScore ?? 0));
-
-    const comp: Record<string, number> = {
-      industryPerf: industryRate * 10,
-      conversion: conversionRate * 10,
-      avgDeal: avgDealNorm * 10,
-      hotStreak: hotNorm * 10,
-      responseSpeed: respNorm * 10,
-      burnout: burnout * 10,
-      availabilityCap: 10, // Phase 1 preview: we don't subtract here (cap enforced in routing apply)
-    };
-
-    // apply toggles
-    if (metricsCfg.enableIndustryPerf === false) comp.industryPerf = 0;
-    if (metricsCfg.enableConversion === false) comp.conversion = 0;
-    if (metricsCfg.enableAvgDealSize === false) comp.avgDeal = 0;
-    if (metricsCfg.enableHotStreak === false) comp.hotStreak = 0;
-    if (metricsCfg.enableResponseSpeed === false) comp.responseSpeed = 0;
-    if (metricsCfg.enableBurnout === false) comp.burnout = 0;
-    if (metricsCfg.enableAvailabilityCap === false) comp.availabilityCap = 0;
-
-    const weights: Record<string, number> = {
-      industryPerf: Number(metricsCfg.weightIndustryPerf ?? 0),
-      conversion: Number(metricsCfg.weightConversion ?? 0),
-      avgDeal: Number(metricsCfg.weightAvgDeal ?? 0),
-      hotStreak: Number(metricsCfg.weightHotStreak ?? 0),
-      responseSpeed: Number(metricsCfg.weightResponseSpeed ?? 0),
-      burnout: Number(metricsCfg.weightBurnout ?? 0),
-      availabilityCap: Number(metricsCfg.weightAvailabilityCap ?? 0),
-    };
-
-    const breakdown: Record<string, number> = {};
-    let total = 0;
-    for (const [k, w] of Object.entries(weights)) {
-      const points = (w / 100) * (comp[k] ?? 0);
-      breakdown[k] = Math.round(points * 100) / 100;
-      total += points;
     }
 
-    total = Math.round(total * 100) / 100;
+    const agents = await Promise.all(agentIds.map(loadAgent));
 
-    return { score: total, breakdown, components: comp };
-  }
+    // Filter leads: skip leads that already have assignee in configured people column
+    const leads = allItems
+      .map((x) => {
+        const cvs = x.item.column_values ?? [];
+        const alreadyAssigned =
+          metricsCfg.assignedPeopleColumnId ? !!parsePeopleUserId(cvs.find((c: any) => String(c.id) === String(metricsCfg.assignedPeopleColumnId))) : false;
 
-  const result = leads.map((l) => {
-    const scored = agents
-      .map((a) => {
-        const s = computeScore(l.industry, a);
+        const industry = metricsCfg.enableIndustryPerf === false ? null : findText(cvs, metricsCfg.industryColumnId);
         return {
-          agentUserId: a.agentUserId,
-          agentName: a.name,
-          score: s.score,
-          breakdown: s.breakdown,
+          boardId: x.boardId,
+          itemId: String(x.item.id),
+          name: String(x.item.name ?? ""),
+          industry,
+          alreadyAssigned,
         };
       })
-      .sort((x, y) => y.score - x.score);
+      .filter((l) => !l.alreadyAssigned)
+      .slice(0, limit);
 
-    return {
-      lead: { boardId: l.boardId, itemId: l.itemId, name: l.name, industry: l.industry },
-      agents: scored,
-      winner: scored[0] ? { agentUserId: scored[0].agentUserId, agentName: scored[0].agentName, score: scored[0].score } : null,
-    };
+    // compute scores
+    function computeScore(leadIndustry: string | null, a: any) {
+      const ind = (leadIndustry ?? "").trim().toLowerCase();
+
+      const perf = parseIndustryPerf(String(a.anySnap?.industryPerfJson ?? "{}"));
+      const industryRate = ind && perf[ind] != null ? clamp01(Number(perf[ind])) : 0.5; // fallback 0.5
+
+      const conversionRate = clamp01(Number(a.conv?.conversionRate ?? 0));
+      const avgDeal = Math.max(0, Number(a.avg?.avgDealSize ?? 0));
+      const avgDealNorm = clamp01(avgDeal / AVG_DEAL_REF);
+
+      const isHot = a.anySnap?.isHot ? 1 : 0;
+      const hotNorm = isHot ? 1 : clamp01(Number(a.anySnap?.hotDealsCount ?? 0) / Math.max(1, Number(metricsCfg.hotStreakMinDeals ?? 1)));
+
+      const respMins = Math.max(0, Number(a.resp?.medianResponseMinutes ?? 0));
+      const respNorm = 1 - clamp01(respMins / RESPONSE_REF_MINS);
+
+      const burnout = clamp01(Number(a.anySnap?.burnoutScore ?? 0));
+
+      const comp: Record<string, number> = {
+        industryPerf: industryRate * 10,
+        conversion: conversionRate * 10,
+        avgDeal: avgDealNorm * 10,
+        hotStreak: hotNorm * 10,
+        responseSpeed: respNorm * 10,
+        burnout: burnout * 10,
+        availabilityCap: 10, // Phase 1 preview: we don't subtract here (cap enforced in routing apply)
+      };
+
+      // apply toggles
+      if (metricsCfg.enableIndustryPerf === false) comp.industryPerf = 0;
+      if (metricsCfg.enableConversion === false) comp.conversion = 0;
+      if (metricsCfg.enableAvgDealSize === false) comp.avgDeal = 0;
+      if (metricsCfg.enableHotStreak === false) comp.hotStreak = 0;
+      if (metricsCfg.enableResponseSpeed === false) comp.responseSpeed = 0;
+      if (metricsCfg.enableBurnout === false) comp.burnout = 0;
+      if (metricsCfg.enableAvailabilityCap === false) comp.availabilityCap = 0;
+
+      const weights: Record<string, number> = {
+        industryPerf: Number(metricsCfg.weightIndustryPerf ?? 0),
+        conversion: Number(metricsCfg.weightConversion ?? 0),
+        avgDeal: Number(metricsCfg.weightAvgDeal ?? 0),
+        hotStreak: Number(metricsCfg.weightHotStreak ?? 0),
+        responseSpeed: Number(metricsCfg.weightResponseSpeed ?? 0),
+        burnout: Number(metricsCfg.weightBurnout ?? 0),
+        availabilityCap: Number(metricsCfg.weightAvailabilityCap ?? 0),
+      };
+
+      const breakdown: Record<string, number> = {};
+      let total = 0;
+      for (const [k, w] of Object.entries(weights)) {
+        const points = (w / 100) * (comp[k] ?? 0);
+        breakdown[k] = Math.round(points * 100) / 100;
+        total += points;
+      }
+
+      total = Math.round(total * 100) / 100;
+
+      return { score: total, breakdown, components: comp };
+    }
+
+    const result = leads.map((l) => {
+      const scored = agents
+        .map((a) => {
+          const s = computeScore(l.industry, a);
+          return {
+            agentUserId: a.agentUserId,
+            agentName: a.name,
+            score: s.score,
+            breakdown: s.breakdown,
+          };
+        })
+        .sort((x, y) => y.score - x.score);
+
+      return {
+        lead: { boardId: l.boardId, itemId: l.itemId, name: l.name, industry: l.industry },
+        agents: scored,
+        winner: scored[0] ? { agentUserId: scored[0].agentUserId, agentName: scored[0].agentName, score: scored[0].score } : null,
+      };
+    });
+
+    return res.json({ ok: true, limit, results: result });
   });
-
-  return res.json({ ok: true, limit, results: result });
-});
 
   /**
    * GET /routing/settings/mode
@@ -780,6 +840,7 @@ r.post("/preview", async (req, res) => {
    */
   r.get("/settings/mode", async (req, res) => {
     try {
+      const ORG_ID = getOrgId(req);
       const settings = await settingsRepo.get(ORG_ID);
       return res.json({
         ok: true,
@@ -801,17 +862,18 @@ r.post("/preview", async (req, res) => {
    */
   r.post("/settings/mode", async (req, res) => {
     try {
+      const ORG_ID = getOrgId(req);
       const { mode } = req.body;
-      
+
       if (!mode || (mode !== "MANUAL_APPROVAL" && mode !== "AUTO")) {
         return res.status(400).json({
           ok: false,
           error: "Invalid mode. Must be 'MANUAL_APPROVAL' or 'AUTO'",
         });
       }
-      
+
       await settingsRepo.setMode(ORG_ID, mode);
-      
+
       await safeAudit({
         orgId: ORG_ID,
         actorUserId: "admin", // TODO: Get from JWT
@@ -821,7 +883,7 @@ r.post("/preview", async (req, res) => {
         before: null,
         after: { mode },
       });
-      
+
       return res.json({
         ok: true,
         mode,

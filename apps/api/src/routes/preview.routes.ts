@@ -3,10 +3,9 @@ import { z } from "zod";
 import { getPrisma } from "../../../../packages/core/src/db/prisma";
 import { PrismaLeadFactRepo } from "../infrastructure/leadFact.repo";
 import { PrismaMetricsConfigRepo } from "../infrastructure/metricsConfig.repo";
-import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/infrastructure/monday.client";
+import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/application/monday.orgClient";
 import { optionalEnv } from "../config/env";
 
-const ORG_ID = "org_1";
 const router = Router();
 
 /**
@@ -25,6 +24,17 @@ const router = Router();
  */
 router.post("/historical", async (req: Request, res: Response): Promise<void> => {
   try {
+    // Get orgId from authenticated user or API key
+    const orgId = (req.user as any)?.orgId || (req as any).orgId;
+    if (!orgId) {
+      res.status(401).json({
+        ok: false,
+        error: "NOT_AUTHENTICATED",
+        message: "User not authenticated",
+      });
+      return;
+    }
+
     // Validate input
     const BodySchema = z.object({
       windowDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).default(30),
@@ -44,7 +54,7 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
 
     // Get metrics configuration
     const metricsCfgRepo = new PrismaMetricsConfigRepo();
-    const metricsCfg = await metricsCfgRepo.getOrCreateDefaults();
+    const metricsCfg = await metricsCfgRepo.getOrCreateDefaults(orgId);
 
     // Check if lead boards are configured
     if (!metricsCfg.leadBoardIds || String(metricsCfg.leadBoardIds).trim().length === 0) {
@@ -61,93 +71,28 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
       .map((x) => x.trim())
       .filter(Boolean);
 
-    // Calculate date range
+    // Calculate date range - still useful for display
     const now = new Date();
     const sinceDate = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
-    console.log(`[Preview] Fetching leads from ${sinceDate.toISOString()} to ${now.toISOString()}`);
+    console.log(`[Preview] Loading 500 latest leads from LeadFact`);
 
-    // Fetch historical leads from database (LeadFact)
+    // Fetch leads from LeadFact instead of Monday.com directly
     const leadFactRepo = new PrismaLeadFactRepo();
-    const historicalLeads = await leadFactRepo.listSince(sinceDate);
+    const allLeadFacts = await leadFactRepo.listSince(orgId, sinceDate);
 
-    console.log(`[Preview] Found ${historicalLeads.length} historical leads in database`);
+    // Sort by enteredAt DESC (newest first) and limit to 500
+    const sortedLeads = allLeadFacts
+      .sort((a, b) => {
+        const dateA = new Date(a.enteredAt || 0).getTime();
+        const dateB = new Date(b.enteredAt || 0).getTime();
+        return dateB - dateA; // DESC - newest first
+      })
+      .slice(0, 500);
 
-    // Limit to 500 leads max
-    const limitedLeads = historicalLeads.slice(0, 500);
+    console.log(`[Preview] Processing ${sortedLeads.length} leads from LeadFact`);
 
-    // Fetch Monday.com data for these leads (to get current status and details)
-    const client = await createMondayClientForOrg(ORG_ID);
-
-    // Group leads by board for efficient fetching
-    const leadsByBoard = new Map<string, string[]>();
-    for (const lead of limitedLeads) {
-      const itemIds = leadsByBoard.get(lead.boardId) || [];
-      itemIds.push(lead.itemId);
-      leadsByBoard.set(lead.boardId, itemIds);
-    }
-
-    // Fetch item details from Monday
-    const mondayItemsMap = new Map<string, any>();
-    for (const [boardId, itemIds] of leadsByBoard.entries()) {
-      try {
-        const query = `
-          query ($boardId: ID!, $itemIds: [ID!]) {
-            boards(ids: [$boardId]) {
-              items_page(limit: 500, query_params: {ids: $itemIds}) {
-                items {
-                  id
-                  name
-                  created_at
-                  column_values {
-                    id
-                    text
-                    value
-                  }
-                }
-              }
-            }
-          }
-        `;
-
-        const response = await (client as any).query(query, {
-          boardId: Number(boardId),
-          itemIds: itemIds.map((id) => Number(id)),
-        });
-
-        const items = response?.data?.boards?.[0]?.items_page?.items || [];
-        for (const item of items) {
-          mondayItemsMap.set(`${boardId}_${item.id}`, item);
-        }
-      } catch (error) {
-        console.warn(`[Preview] Failed to fetch items from board ${boardId}:`, error);
-      }
-    }
-
-    console.log(`[Preview] Fetched ${mondayItemsMap.size} items from Monday.com`);
-
-    // Helper: Find column text value
-    function findText(cvs: any[], colId?: string | null): string | null {
-      if (!colId) return null;
-      const c = cvs.find((x: any) => String(x.id) === String(colId));
-      const t = (c?.text ?? "").trim();
-      return t || null;
-    }
-
-    // Helper: Parse people column for user ID
-    function parsePeopleUserId(col: any): string | null {
-      const raw = col?.value ?? null;
-      if (!raw) return null;
-      try {
-        const j = JSON.parse(raw);
-        const persons = (j?.personsAndTeams ?? j?.persons_and_teams ?? []) as any[];
-        const first = persons?.[0];
-        if (!first) return null;
-        return first?.id ? String(first.id) : null;
-      } catch {
-        return null;
-      }
-    }
+    // Helpers no longer needed - data comes from LeadFact
 
     // Load agent metrics for routing calculations
     const prisma = getPrisma();
@@ -158,7 +103,7 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
     ].filter(Boolean);
 
     const agentRows = await prisma.agentMetricsSnapshot.findMany({
-      where: { orgId: ORG_ID, windowDays: { in: windowDaysForMetrics as any } },
+      where: { orgId: orgId, windowDays: { in: windowDaysForMetrics as any } },
       select: { agentUserId: true },
       distinct: ["agentUserId"],
     });
@@ -169,7 +114,7 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
     // Load agent data
     async function loadAgent(agentUserId: string) {
       const snaps = await prisma.agentMetricsSnapshot.findMany({
-        where: { orgId: ORG_ID, agentUserId },
+        where: { orgId: orgId, agentUserId },
         orderBy: { windowDays: "asc" },
       });
       const byWindow = new Map<number, any>();
@@ -181,7 +126,7 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
 
       // Try to get agent name from cache
       const cached = await prisma.mondayUserCache.findFirst({
-        where: { orgId: ORG_ID, userId: agentUserId },
+        where: { orgId: orgId, userId: agentUserId },
       });
       const name = cached?.name ?? `Agent ${agentUserId}`;
 
@@ -196,6 +141,25 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
     }
 
     const agents = await Promise.all(agentIds.map((id) => loadAgent(id)));
+
+    // Load all user names from MondayUserCache for assignedTo display
+    const allAssignedUserIds = Array.from(new Set(sortedLeads.map(l => l.assignedUserId).filter(Boolean)));
+    const userNameCache = new Map<string, string>();
+
+    if (allAssignedUserIds.length > 0) {
+      const cachedUsers = await prisma.mondayUserCache.findMany({
+        where: {
+          orgId: orgId,
+          userId: { in: allAssignedUserIds as string[] }
+        },
+      });
+
+      for (const cached of cachedUsers) {
+        userNameCache.set(cached.userId, cached.name || `User ${cached.userId}`);
+      }
+    }
+
+    console.log(`[Preview] Loaded ${userNameCache.size} user names from cache`);
 
     // Helper: Compute agent score for a lead
     function computeScore(leadIndustry: string | null, agent: any) {
@@ -264,36 +228,22 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
       return { score: total, breakdown };
     }
 
-    // Process each lead
+    // Process each lead from LeadFact
     const results: any[] = [];
-    let totalLeads = limitedLeads.length;
+    let totalLeads = sortedLeads.length;
     let routedLeads = 0;
     let closedWonLeads = 0;
     let systemMatchedClosedWon = 0; // leads שהמערכת הייתה ממליצה והם נסגרו
 
-    for (const leadFact of limitedLeads) {
-      const mondayKey = `${leadFact.boardId}_${leadFact.itemId}`;
-      const mondayItem = mondayItemsMap.get(mondayKey);
+    for (const leadFact of sortedLeads) {
+      const boardId = leadFact.boardId;
+      const itemId = leadFact.itemId;
 
-      if (!mondayItem) {
-        // Lead exists in DB but not in Monday anymore - skip
-        continue;
-      }
-
-      const cvs = mondayItem.column_values || [];
-      const industry = metricsCfg.enableIndustryPerf === false ? null : findText(cvs, metricsCfg.industryColumnId);
-
-      // Get current assigned user from Monday
-      let assignedUserId: string | null = null;
-      let assignedUserName: string | null = null;
-      if (metricsCfg.assignedPeopleColumnId) {
-        const pc = cvs.find((x: any) => String(x.id) === String(metricsCfg.assignedPeopleColumnId));
-        assignedUserId = parsePeopleUserId(pc);
-        assignedUserName = pc?.text ?? null;
-      }
-
-      // Get status
-      const statusText = findText(cvs, metricsCfg.closedWonStatusColumnId);
+      // Extract data from LeadFact
+      const industry = metricsCfg.enableIndustryPerf === false ? null : leadFact.industry;
+      const assignedUserId = leadFact.assignedUserId;
+      const assignedUserName = assignedUserId ? (userNameCache.get(assignedUserId) || `User ${assignedUserId}`) : null;
+      const statusText = leadFact.statusValue;
       const isClosedWon = leadFact.closedWonAt != null;
 
       if (isClosedWon) {
@@ -319,16 +269,36 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
         routedLeads++;
 
         // Check if system recommendation would have succeeded
-        // Success = lead was closed won (regardless of who actually got it)
+        // Realistic comparison:
+        // 1. Compute score for historically assigned agent
+        let assignedAgentScore = 0;
+        if (assignedUserId) {
+          const assignedAgent = agents.find(a => a.agentUserId === assignedUserId);
+          if (assignedAgent) {
+            const s = computeScore(industry, assignedAgent);
+            assignedAgentScore = s.score;
+          }
+        }
+
+        // Credit system only if lead was historically won AND recommendation is competitive
         if (isClosedWon) {
-          systemMatchedClosedWon++;
+          if (assignedUserId === topRecommendation.agentUserId) {
+            // System recommended the same person who won
+            systemMatchedClosedWon++;
+          } else if (topRecommendation.score >= assignedAgentScore) {
+            // System recommended someone as good or better
+            systemMatchedClosedWon++;
+          } else if (topRecommendation.score >= 80) {
+            // Even if lower than actual, if score is "Excellent", we credit it
+            systemMatchedClosedWon++;
+          }
         }
       }
 
       results.push({
-        boardId: leadFact.boardId,
-        itemId: leadFact.itemId,
-        name: mondayItem.name || "Unnamed Lead",
+        boardId: boardId,
+        itemId: itemId,
+        name: leadFact.itemName || `Lead ${itemId}`,
         industry: industry || "Unknown",
         status: statusText || "Unknown",
         wasClosedWon: isClosedWon,
@@ -336,15 +306,15 @@ router.post("/historical", async (req: Request, res: Response): Promise<void> =>
         enteredAt: leadFact.enteredAt?.toISOString() || null,
         assignedTo: assignedUserId
           ? {
-              userId: assignedUserId,
-              name: assignedUserName || `User ${assignedUserId}`,
-            }
+            userId: assignedUserId,
+            name: assignedUserName || `User ${assignedUserId}`,
+          }
           : null,
         recommendedTo: topRecommendation
           ? {
-              userId: topRecommendation.agentUserId,
-              name: topRecommendation.agentName,
-            }
+            userId: topRecommendation.agentUserId,
+            name: topRecommendation.agentName,
+          }
           : null,
         score: topRecommendation?.score || 0,
         breakdown: topRecommendation?.breakdown || {},

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
-import { 
-  calculateAgentProfile, 
+import {
+  calculateAgentProfile,
   calculateAllAgentProfiles,
   getProfileSummary,
   isAgentEligible,
@@ -15,17 +15,23 @@ import {
 export function agentProfileRoutes() {
   const r = Router();
   const profileRepo = new PrismaAgentProfileRepo();
-  
-  const ORG_ID = "org_1"; // TODO: Replace with JWT-derived orgId
-  
+
+  /**
+   * Helper to resolve orgId from request
+   */
+  function resolveOrgId(req: any): string {
+    return req.body?.orgId || req.query?.orgId || req.orgId || process.env.DEFAULT_ORG_ID || "cmjq2ces90000rbcw8s5iqlcz";
+  }
+
   /**
    * GET /agents/profiles
    * List all agent profiles
    */
   r.get("/profiles", async (req, res) => {
     try {
-      const profiles = await profileRepo.listByOrg(ORG_ID);
-      
+      const orgId = resolveOrgId(req);
+      const profiles = await profileRepo.listByOrg(orgId);
+
       return res.json({
         ok: true,
         profiles: profiles.map(p => ({
@@ -44,15 +50,16 @@ export function agentProfileRoutes() {
       });
     }
   });
-  
+
   /**
    * GET /agents/profiles/eligible
    * List only eligible agents (availability > 0)
    */
   r.get("/profiles/eligible", async (req, res) => {
     try {
-      const profiles = await profileRepo.listEligibleAgents(ORG_ID);
-      
+      const orgId = resolveOrgId(req);
+      const profiles = await profileRepo.listEligibleAgents(orgId);
+
       return res.json({
         ok: true,
         profiles: profiles.map(p => ({
@@ -71,7 +78,7 @@ export function agentProfileRoutes() {
       });
     }
   });
-  
+
   /**
    * GET /agents/:agentUserId/profile
    * Get specific agent profile
@@ -79,16 +86,16 @@ export function agentProfileRoutes() {
   r.get("/:agentUserId/profile", async (req, res) => {
     try {
       const { agentUserId } = req.params;
-      
-      const profile = await profileRepo.get(ORG_ID, agentUserId);
-      
+      const orgId = resolveOrgId(req);
+      const profile = await profileRepo.get(orgId, agentUserId);
+
       if (!profile) {
         return res.status(404).json({
           ok: false,
           error: "Agent profile not found",
         });
       }
-      
+
       return res.json({
         ok: true,
         profile: {
@@ -106,7 +113,7 @@ export function agentProfileRoutes() {
       });
     }
   });
-  
+
   /**
    * POST /agents/profiles/recompute
    * Manually trigger profile recalculation for all agents
@@ -114,17 +121,18 @@ export function agentProfileRoutes() {
   r.post("/profiles/recompute", async (req, res) => {
     try {
       console.log("[agents/profiles/recompute] Starting recalculation...");
-      
+      const orgId = resolveOrgId(req);
+
       // Calculate all profiles
-      const profiles = await calculateAllAgentProfiles(ORG_ID);
-      
+      const profiles = await calculateAllAgentProfiles(orgId);
+
       // Save to database
       await Promise.all(
         profiles.map(profile => profileRepo.upsert(profile))
       );
-      
+
       console.log(`[agents/profiles/recompute] Computed ${profiles.length} profiles`);
-      
+
       return res.json({
         ok: true,
         message: `Successfully recomputed ${profiles.length} agent profiles`,
@@ -144,7 +152,7 @@ export function agentProfileRoutes() {
       });
     }
   });
-  
+
   /**
    * POST /agents/:agentUserId/profile/recompute
    * Manually trigger profile recalculation for specific agent
@@ -152,15 +160,16 @@ export function agentProfileRoutes() {
   r.post("/:agentUserId/profile/recompute", async (req, res) => {
     try {
       const { agentUserId } = req.params;
-      
+      const orgId = resolveOrgId(req);
+
       console.log(`[agents/${agentUserId}/profile/recompute] Recalculating...`);
-      
+
       // Calculate profile
-      const profile = await calculateAgentProfile(agentUserId, ORG_ID);
-      
+      const profile = await calculateAgentProfile(agentUserId, orgId);
+
       // Save to database
       await profileRepo.upsert(profile);
-      
+
       return res.json({
         ok: true,
         message: `Successfully recomputed profile for agent ${agentUserId}`,
@@ -179,7 +188,7 @@ export function agentProfileRoutes() {
       });
     }
   });
-  
+
   return r;
 }
 

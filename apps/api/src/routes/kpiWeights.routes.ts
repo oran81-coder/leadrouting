@@ -16,9 +16,10 @@ export function kpiWeightsRoutes() {
    * GET /api/kpi-weights
    * Returns current KPI weights and settings
    */
-  r.get("/", async (_req, res) => {
+  r.get("/", async (req, res) => {
     try {
-      const data = await repo.getWeights();
+      const orgId = (req.user as any)?.orgId || "org_1"; // Fallback for backward compatibility
+      const data = await repo.getWeights(orgId);
       return res.json({ ok: true, ...data });
     } catch (error: any) {
       console.error("Error loading KPI weights:", error);
@@ -37,6 +38,7 @@ export function kpiWeightsRoutes() {
    */
   r.post("/", async (req, res) => {
     try {
+      const orgId = (req.user as any)?.orgId || "org_1"; // Fallback for backward compatibility
       const { weights, settings } = req.body;
 
       if (!weights || !settings) {
@@ -69,7 +71,7 @@ export function kpiWeightsRoutes() {
         throw new ValidationError("recentPerfWindowDays must be between 7 and 90");
       }
 
-      await repo.updateWeights(weights, settings);
+      await repo.updateWeights(orgId, weights, settings);
 
       return res.json({ ok: true, message: "KPI weights updated successfully" });
     } catch (error: any) {

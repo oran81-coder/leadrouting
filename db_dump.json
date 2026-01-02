@@ -1,0 +1,19 @@
+{
+  "settings": {
+    "id": "cmjto3a880005kootr7f7k0si",
+    "orgId": "cmjt563ps000037hg6i4dvl7m",
+    "mode": "MANUAL_APPROVAL",
+    "dailyLeadThreshold": 20,
+    "kpiWeights": "{\"workload\":20,\"conversionHistorical\":25,\"recentPerformance\":15,\"responseTime\":10,\"avgTimeToClose\":10,\"avgDealSize\":10,\"industryMatch\":10,\"hotStreak\":0}",
+    "createdAt": "2025-12-31T07:00:57.609Z",
+    "updatedAt": "2025-12-31T07:00:57.609Z"
+  },
+  "ruleSet": {
+    "id": "cmjto3a7u0001kootuph0yo11",
+    "orgId": "cmjt563ps000037hg6i4dvl7m",
+    "version": 1,
+    "payload": "{\"rules\":[{\"id\":\"default-catch-all\",\"name\":\"Route All Leads (Scoring Engine)\",\"conditions\":[],\"action\":{\"type\":\"route_to_scoring_engine\",\"value\":null}}],\"version\":1,\"updatedAt\":\"2025-12-31T07:00:57.592Z\"}",
+    "createdAt": "2025-12-31T07:00:57.595Z",
+    "createdBy": "system"
+  }
+}

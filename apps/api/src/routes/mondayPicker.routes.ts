@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/application/monday.orgClient";
 
-const ORG_ID = "org_1";
+const ORG_ID = process.env.DEFAULT_ORG_ID || "cmjq2ces90000rbcw8s5iqlcz";
 
 function safeJsonParse(s: string | null | undefined) {
   try {

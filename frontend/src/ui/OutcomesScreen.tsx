@@ -28,23 +28,23 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [windowDays, setWindowDays] = useState<7 | 30 | 90>(30);
-  
+
   // Comparison mode state
   const [comparisonMode, setComparisonMode] = useState(false);
-  
+
   // Charts state
   const [showCharts, setShowCharts] = useState(true);
-  
+
   // Auto-refresh state
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  
+
   // Advanced Filters - Phase 2.3
   const [industryFilter, setIndustryFilter] = useState<string>("");
   const [minRevenue, setMinRevenue] = useState<string>("");
   const [maxRevenue, setMaxRevenue] = useState<string>("");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  
+
   // Table state
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -52,7 +52,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  
+
   // Modal state
   const [selectedAgent, setSelectedAgent] = useState<OutcomesPerAgentDTO | null>(null);
 
@@ -63,7 +63,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
       const result = await getOutcomesSummary({ windowDays });
       setData(result);
       setLastUpdated(new Date());
-      
+
       // If comparison mode is enabled, fetch previous period data
       if (comparisonMode) {
         // Note: This is a simplified version. In production, you'd need backend support
@@ -106,12 +106,12 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
   // Sorting and filtering logic
   const filteredAndSortedAgents = React.useMemo(() => {
     if (!data?.perAgent) return [];
-    
+
     // Filter by search query (debounced for performance)
     let filtered = data.perAgent.filter((agent) =>
       agent && agent.agentName && agent.agentName.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
     );
-    
+
     // Filter by industry (Phase 2.3)
     if (industryFilter && industryFilter !== "") {
       filtered = filtered.filter((agent) => {
@@ -120,7 +120,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
         return true;
       });
     }
-    
+
     // Filter by revenue range (Phase 2.3)
     if (minRevenue || maxRevenue) {
       filtered = filtered.filter((agent) => {
@@ -131,33 +131,33 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
         return revenue >= min && revenue <= max;
       });
     }
-    
+
     // Sort
     filtered.sort((a, b) => {
       let aVal: any = a[sortField];
       let bVal: any = b[sortField];
-      
+
       // Handle name sorting
       if (sortField === "name") {
         aVal = a.agentName;
         bVal = b.agentName;
       }
-      
+
       // Handle null values
       if (aVal === null && bVal === null) return 0;
       if (aVal === null) return 1;
       if (bVal === null) return -1;
-      
+
       // Compare
       if (typeof aVal === "string") {
-        return sortDirection === "asc" 
-          ? aVal.localeCompare(bVal) 
+        return sortDirection === "asc"
+          ? aVal.localeCompare(bVal)
           : bVal.localeCompare(aVal);
       }
-      
+
       return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
     });
-    
+
     return filtered;
   }, [data, searchQuery, sortField, sortDirection]);
 
@@ -194,7 +194,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
   // Export to CSV function
   const exportToCSV = () => {
     if (!data?.perAgent) return;
-    
+
     // CSV headers
     const headers = [
       "Agent Name",
@@ -206,7 +206,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
       "Avg Deal ($)",
       "Median Time to Close (days)"
     ];
-    
+
     // CSV rows
     const rows = filteredAndSortedAgents.map((agent) => [
       agent.agentName,
@@ -216,28 +216,28 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
       (agent.conversionRate * 100).toFixed(2),
       agent.revenue !== null ? agent.revenue.toFixed(2) : "",
       agent.avgDeal !== null ? agent.avgDeal.toFixed(2) : "",
-      agent.medianTimeToCloseDays !== null ? agent.medianTimeToCloseDays : ""
+      agent.medianTimeToCloseDays !== null ? agent.medianTimeToCloseDays.toFixed(1) : ""
     ]);
-    
+
     // Combine headers and rows
     const csvContent = [
       headers.join(","),
       ...rows.map((row) => row.map((cell) => `"${cell}"`).join(","))
     ].join("\n");
-    
+
     // Create blob and download
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     const date = new Date().toISOString().split("T")[0];
-    
+
     link.setAttribute("href", url);
     link.setAttribute("download", `outcomes-${windowDays}days-${date}.csv`);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     showToast("CSV exported successfully!", "success");
   };
 
@@ -251,33 +251,30 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
           <button
             onClick={() => setWindowDays(7)}
             disabled={loading}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              windowDays === 7
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${windowDays === 7
                 ? "bg-blue-600 text-white"
                 : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             7 Days
           </button>
           <button
             onClick={() => setWindowDays(30)}
             disabled={loading}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              windowDays === 30
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${windowDays === 30
                 ? "bg-blue-600 text-white"
                 : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             30 Days
           </button>
           <button
             onClick={() => setWindowDays(90)}
             disabled={loading}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              windowDays === 90
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${windowDays === 90
                 ? "bg-blue-600 text-white"
                 : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             90 Days
           </button>
@@ -288,11 +285,10 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
         <button
           onClick={() => setComparisonMode(!comparisonMode)}
           disabled={loading}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-            comparisonMode
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${comparisonMode
               ? "bg-purple-600 text-white"
               : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -307,11 +303,10 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
 
         <button
           onClick={() => setShowCharts(!showCharts)}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-            showCharts
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${showCharts
               ? "bg-indigo-600 text-white"
               : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
+            }`}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -383,11 +378,10 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
 
         <button
           onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-            showAdvancedFilters
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${showAdvancedFilters
               ? "bg-purple-600 text-white"
               : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
+            }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -613,7 +607,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                 <div className="text-3xl font-bold text-gray-900 dark:text-white">
                   {data.kpis.medianTimeToCloseDays !== null ? (
                     <>
-                      {data.kpis.medianTimeToCloseDays}
+                      {data.kpis.medianTimeToCloseDays.toFixed(1)}
                       <span className="text-lg text-gray-600 dark:text-gray-400 ml-1">days</span>
                     </>
                   ) : (
@@ -690,15 +684,14 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                         </div>
                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                           <div
-                            className={`h-2.5 rounded-full ${
-                              idx === 0
+                            className={`h-2.5 rounded-full ${idx === 0
                                 ? "bg-green-600"
                                 : idx === 1
-                                ? "bg-blue-600"
-                                : idx === 2
-                                ? "bg-purple-600"
-                                : "bg-gray-400"
-                            }`}
+                                  ? "bg-blue-600"
+                                  : idx === 2
+                                    ? "bg-purple-600"
+                                    : "bg-gray-400"
+                              }`}
                             style={{ width: `${agent.conversionRate * 100}%` }}
                           ></div>
                         </div>
@@ -743,7 +736,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                   const topRevenue = [...data.perAgent]
                     .filter((a) => a && a.agentName && a.revenue !== null && a.revenue > 0)
                     .sort((a, b) => (b.revenue || 0) - (a.revenue || 0))[0];
-                  
+
                   return (
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                       <div className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
@@ -764,7 +757,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                   const fastestCloser = [...data.perAgent]
                     .filter((a) => a && a.agentName && a.medianTimeToCloseDays !== null)
                     .sort((a, b) => (a.medianTimeToCloseDays || Infinity) - (b.medianTimeToCloseDays || Infinity))[0];
-                  
+
                   return (
                     <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
                       <div className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-1">
@@ -774,7 +767,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                         {fastestCloser ? fastestCloser.agentName : "N/A"}
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {fastestCloser ? `${fastestCloser.medianTimeToCloseDays} days avg` : "No closing data"}
+                        {fastestCloser ? `${fastestCloser.medianTimeToCloseDays.toFixed(1)} days avg` : "No closing data"}
                       </div>
                     </div>
                   );
@@ -1005,7 +998,7 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                           {agent.avgDeal !== null ? `$${Math.round(agent.avgDeal).toLocaleString()}` : "—"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {agent.medianTimeToCloseDays !== null ? `${agent.medianTimeToCloseDays} days` : "—"}
+                          {agent.medianTimeToCloseDays !== null ? `${agent.medianTimeToCloseDays.toFixed(1)} days` : "—"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <button
@@ -1056,11 +1049,10 @@ export function OutcomesScreen(props: OutcomesScreenProps) {
                         <button
                           key={pageNum}
                           onClick={() => setCurrentPage(pageNum)}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            currentPage === pageNum
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${currentPage === pageNum
                               ? "bg-blue-600 text-white"
                               : "text-gray-700 hover:bg-gray-100"
-                          }`}
+                            }`}
                         >
                           {pageNum}
                         </button>

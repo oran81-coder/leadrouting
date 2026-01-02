@@ -1010,7 +1010,30 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
   return (
     <NavigationProvider setView={setView}>
       <div style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        {/* Logo - Centered */}
+        <div style={{ 
+          display: "flex", 
+          justifyContent: "center", 
+          alignItems: "center", 
+          marginBottom: "12px",
+          marginTop: "0"
+        }}>
+          <img 
+            src="/logo.png" 
+            alt="LeadoRun" 
+            style={{ 
+              height: "70px", 
+              width: "auto",
+              maxWidth: "450px",
+              cursor: "pointer"
+            }}
+            onClick={() => setView("admin")}
+            title="LeadoRun - Lead Routing System"
+          />
+        </div>
+        
+        {/* Navigation Buttons */}
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
           <button 
             onClick={() => setView("admin")} 
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -1146,7 +1169,7 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         </label>
         <button onClick={persistConnection}>Save</button>
         {globalMsg ? <span style={{ opacity: 0.8 }}>{globalMsg}</span> : null}
-      </div>
+        </div>
 
       <hr style={{ margin: "16px 0" }} />
 

@@ -25,6 +25,7 @@ import { loadHistoricalLeads } from "../services/historyLoader";
 import { calculateAllAgentProfiles } from "../../../../packages/modules/agent-profiling/src/application/agentProfiler";
 import { PrismaAgentProfileRepo } from "../infrastructure/agentProfile.repo";
 import { env } from "../config/env";
+import { loadInitial500Leads, triggerProfileRecompute } from "../services/initialDataLoader";
 
 /**
  * Phase 1 Admin routes (multi-org with backward compatibility).
@@ -137,6 +138,27 @@ export function adminRoutes() {
 
   r.post("/mapping", validateBody(FieldMappingConfigZ), async (req, res) => {
     const payload = req.body;
+    
+    // Get latest schema for business validation
+    const schema = await schemaRepo.getLatest(getOrgId(req));
+    if (!schema) {
+      return res.status(400).json({
+        ok: false,
+        error: "Cannot save mapping without schema. Save schema first."
+      });
+    }
+    
+    // Run business validation
+    const biz = validateSchemaAndMapping(schema as any, payload);
+    if (!biz.ok) {
+      console.error("[admin/mapping] Business validation failed:", biz.issues);
+      return res.status(400).json({
+        ok: false,
+        error: "Business validation failed",
+        issues: biz.issues
+      });
+    }
+    
     const before = await mappingRepo.getLatest(getOrgId(req));
 
     const saved = await mappingRepo.saveNewVersion(getOrgId(req), payload, getUserId(req));
@@ -150,6 +172,119 @@ export function adminRoutes() {
       before,
       after: payload,
     });
+
+    // Extract and update MetricsConfig with board IDs from mapping
+    const orgId = getOrgId(req);
+    const primaryBoardId = payload.primaryBoardId;
+    
+    if (primaryBoardId) {
+      console.log(`[admin/mapping] Updating MetricsConfig with boardId: ${primaryBoardId}`);
+      
+      const { PrismaMetricsConfigRepo } = require("../infrastructure/metricsConfig.repo");
+      const metricsRepo = new PrismaMetricsConfigRepo();
+      
+      // Ensure metrics config exists
+      await metricsRepo.getOrCreateDefaults(orgId);
+      
+      // Extract key columns from mapping (fields use snake_case)
+      const assignedPeopleCol = payload.mappings?.assigned_agent?.columnId || null;
+      const closedWonCol = payload.mappings?.deal_won_status_column?.columnId || null;
+      const closedWonValue = payload.mappings?.deal_won_status_column?.value || "Done"; // Default if not specified
+      const dealAmountCol = payload.mappings?.lead_deal_size?.columnId || null;
+      const industryCol = payload.mappings?.lead_industry?.columnId || null;
+      
+      // Update MetricsConfig with all relevant mappings
+      await metricsRepo.update(orgId, {
+        leadBoardIds: primaryBoardId,
+        assignedPeopleColumnId: assignedPeopleCol,
+        closedWonStatusColumnId: closedWonCol,
+        closedWonStatusValue: closedWonValue,
+        dealAmountColumnId: dealAmountCol,
+        industryColumnId: industryCol,
+      });
+      
+      console.log(`[admin/mapping] MetricsConfig updated:`, {
+        leadBoardIds: primaryBoardId,
+        assignedPeopleColumnId: assignedPeopleCol,
+        closedWonStatusColumnId: closedWonCol,
+        closedWonStatusValue: closedWonValue,
+        dealAmountColumnId: dealAmountCol,
+        industryColumnId: industryCol,
+      });
+    }
+
+    // Auto-setup: Trigger on first mapping OR if critical components are missing
+    const isFirstMapping = !before || before.version === 0;
+    const existingRules = await rulesRepo.getLatest(orgId);
+    const existingRoutingState = await routingStateRepo.get(orgId);
+    const needsAutoSetup = isFirstMapping || !existingRules || !existingRoutingState?.isEnabled;
+    
+    if (needsAutoSetup) {
+      console.log(`[admin/mapping] Auto-setup triggered (firstMapping: ${isFirstMapping}, hasRules: ${!!existingRules}, routingEnabled: ${existingRoutingState?.isEnabled})...`);
+      
+      // Run in background to not block the response
+      (async () => {
+        try {
+          // Only load initial data on first mapping
+          if (isFirstMapping) {
+            const result = await loadInitial500Leads(orgId);
+            console.log(`[admin/mapping] Initial data load completed: ${result.loaded} loaded, ${result.errors} errors`);
+          } else {
+            console.log(`[admin/mapping] Skipping initial data load (not first mapping)`);
+          }
+          
+          // Auto-create default "Catch-All" rule if no rules exist
+          const currentRules = await rulesRepo.getLatest(orgId);
+          if (!currentRules) {
+            console.log(`[admin/mapping] No rules found - creating default Catch-All rule...`);
+            const defaultRuleset = {
+              rules: [{
+                id: "default-catch-all",
+                name: "Route All Leads (Scoring Engine)",
+                conditions: [],
+                action: { type: "route_to_scoring_engine", value: null }
+              }]
+            };
+            await rulesRepo.saveNewVersion(orgId, defaultRuleset, "system");
+            console.log(`[admin/mapping] ✅ Default rule created`);
+          }
+          
+          // Auto-enable routing state if not already enabled
+          const routingState = await routingStateRepo.get(orgId);
+          if (!routingState?.isEnabled) {
+            console.log(`[admin/mapping] Routing not enabled - auto-enabling...`);
+            const latestSchema = await schemaRepo.getLatest(orgId);
+            const latestMapping = await mappingRepo.getLatest(orgId);
+            const latestRules = await rulesRepo.getLatest(orgId);
+            
+            if (latestSchema && latestMapping) {
+              await routingStateRepo.setEnabled({
+                orgId,
+                enabled: true,
+                enabledBy: "system",
+                schemaVersion: latestSchema.version,
+                mappingVersion: latestMapping.version,
+                rulesVersion: latestRules?.version || null,
+              });
+              console.log(`[admin/mapping] ✅ Routing enabled automatically`);
+            }
+          }
+          
+          // Auto-set routing mode to MANUAL_APPROVAL if not set
+          const routingSettings = await routingSettingsRepo.get(orgId);
+          if (!routingSettings) {
+            console.log(`[admin/mapping] Setting default routing mode: MANUAL_APPROVAL...`);
+            await routingSettingsRepo.setMode(orgId, "MANUAL_APPROVAL");
+            console.log(`[admin/mapping] ✅ Routing mode set to MANUAL_APPROVAL`);
+          }
+          
+          // Trigger profile recompute after everything is set up
+          await triggerProfileRecompute(orgId);
+        } catch (err) {
+          console.error(`[admin/mapping] Background auto-setup failed:`, err);
+        }
+      })();
+    }
 
     return res.json({ ok: true, version: saved.version });
   });
@@ -333,10 +468,10 @@ export function adminRoutes() {
         });
       }
 
-      const boards = await cli.fetchBoards();
+      const boards = await (cli as any).listBoards(200);
       return res.json({ 
         ok: true, 
-        boards: boards.map(b => ({
+        boards: boards.map((b: any) => ({
           id: b.id,
           name: b.name
         }))
@@ -346,6 +481,64 @@ export function adminRoutes() {
       return res.status(500).json({ 
         ok: false, 
         error: error.message || "Failed to fetch boards" 
+      });
+    }
+  });
+
+  // Get columns for a specific board
+  r.get("/monday/boards/:boardId/columns", async (req, res) => {
+    try {
+      const cli = await createMondayClientForOrg(getOrgId(req));
+      if (!cli) {
+        return res.status(503).json({ 
+          ok: false, 
+          error: "Monday.com not connected for this organization" 
+        });
+      }
+
+      const boardId = String(req.params.boardId);
+      const columns = await (cli as any).listBoardColumns(boardId);
+      return res.json({ 
+        ok: true, 
+        columns: columns.map((c: any) => ({
+          id: c.id,
+          title: c.title,
+          type: c.type,
+          settings_str: c.settings_str
+        }))
+      });
+    } catch (error: any) {
+      console.error("Error fetching board columns:", error);
+      return res.status(500).json({ 
+        ok: false, 
+        error: error.message || "Failed to fetch columns" 
+      });
+    }
+  });
+
+  // Get status labels for a specific status column
+  r.get("/monday/boards/:boardId/status/:columnId/labels", async (req, res) => {
+    try {
+      const cli = await createMondayClientForOrg(getOrgId(req));
+      if (!cli) {
+        return res.status(503).json({ 
+          ok: false, 
+          error: "Monday.com not connected for this organization" 
+        });
+      }
+
+      const boardId = String(req.params.boardId);
+      const columnId = String(req.params.columnId);
+      const labels = await (cli as any).listStatusLabels(boardId, columnId);
+      return res.json({ 
+        ok: true, 
+        labels: labels || []
+      });
+    } catch (error: any) {
+      console.error("Error fetching status labels:", error);
+      return res.status(500).json({ 
+        ok: false, 
+        error: error.message || "Failed to fetch status labels" 
       });
     }
   });
@@ -657,6 +850,61 @@ export function adminRoutes() {
       return res.status(500).json({
         ok: false,
         message: `Failed to sync metrics: ${error.message}`,
+        error: error.message,
+      });
+    }
+  });
+
+  // -------------------------
+  // Initial Data Load - Load 500 leads from Monday.com
+  // -------------------------
+  r.post("/leads/load-initial", async (req, res) => {
+    try {
+      const orgId = getOrgId(req);
+      console.log(`[admin/leads/load-initial] Starting initial data load for org: ${orgId}`);
+
+      // Load 500 leads from Monday.com
+      const result = await loadInitial500Leads(orgId);
+
+      if (!result.success) {
+        return res.status(500).json({
+          ok: false,
+          message: "Initial data load failed",
+          ...result,
+        });
+      }
+
+      // Trigger agent profile recompute in background
+      triggerProfileRecompute(orgId).catch(err => {
+        console.error(`[admin/leads/load-initial] Background recompute failed:`, err);
+      });
+
+      await safeAudit({
+        orgId,
+        actorUserId: getUserId(req),
+        action: "admin.load_initial_leads",
+        entityType: "LeadFact",
+        entityId: null,
+        before: null,
+        after: {
+          loaded: result.loaded,
+          skipped: result.skipped,
+          errors: result.errors,
+        },
+      });
+
+      console.log(`[admin/leads/load-initial] Completed: ${result.loaded} loaded, ${result.skipped} skipped, ${result.errors} errors`);
+
+      return res.json({
+        ok: true,
+        message: `Successfully loaded ${result.loaded} leads from Monday.com`,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("[admin/leads/load-initial] Error:", error);
+      return res.status(500).json({
+        ok: false,
+        message: `Failed to load initial leads: ${error.message}`,
         error: error.message,
       });
     }

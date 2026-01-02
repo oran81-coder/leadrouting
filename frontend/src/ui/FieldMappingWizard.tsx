@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useTheme } from "./ThemeContext";
 import { useToast } from "./hooks/useToast";
 import { 
   getMappingConfig, 
   saveMappingConfig, 
+  saveInternalSchema,
   getMappingBoards,
   listMondayBoardColumns,
   previewMapping,
@@ -33,7 +34,7 @@ const DEFAULT_INTERNAL_FIELDS: InternalFieldDefinition[] = [
   { id: "agent_domain", label: "Agent Domain (Optional)", type: "computed", required: false, isCore: true, isEnabled: true, group: "Agent", description: "Optional: Map to Monday column OR system learns from Industry Performance metrics" },
   { id: "agent_availability", label: "Availability (Auto-Calculated)", type: "computed", required: false, isCore: true, isEnabled: true, group: "Agent", description: "Calculated automatically from leads in-treatment count and daily quota" },
   { id: "deal_status", label: "Deal Status", type: "status", required: true, isCore: true, isEnabled: true, group: "Deal", description: "Current status of the deal" },
-  { id: "deal_won_status_column", label: "Deal Won Status Column", type: "status", required: false, isCore: true, isEnabled: true, group: "Deal", description: "Column containing 'Deal Won' status (can be same as Deal Status or a separate column)" },
+  { id: "deal_won_status_column", label: "Deal Won Status Column", type: "status", required: false, isCore: true, isEnabled: true, group: "Deal", description: "Column containing 'Deal Won' status (can be same as Deal Status or a separate column). ⚠️ Required for Step 4 status configuration." },
   { id: "deal_close_date", label: "Close Date (Optional Column)", type: "date", required: false, isCore: true, isEnabled: true, group: "Deal", description: "Optional: If column exists, use it. Otherwise, use status change timestamp" },
 ];
 
@@ -71,6 +72,8 @@ export function FieldMappingWizard() {
   const [loadingDealWonLabels, setLoadingDealWonLabels] = useState(false);
   
   const [previewResult, setPreviewResult] = useState<MappingPreviewResult | null>(null);
+  const loadedRef = useRef(false);
+  const toastShownRef = useRef(false);
 
   // Scroll to top when step changes for better UX
   useEffect(() => {
@@ -79,6 +82,9 @@ export function FieldMappingWizard() {
 
   // Load existing configuration and boards
   useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+
     async function load() {
       try {
         setLoading(true);
@@ -89,7 +95,10 @@ export function FieldMappingWizard() {
           setBoards(boardsData || []);
         } catch (boardError: any) {
           console.error("Failed to load boards:", boardError);
-          showToast("⚠️ Monday not connected. Connect in Admin → Monday Connection to use real data, or continue with mock mode.", "warning");
+          if (!toastShownRef.current) {
+            toastShownRef.current = true;
+            showToast("⚠️ Monday not connected. Connect in Admin → Monday Connection to use real data, or continue with mock mode.", "warning");
+          }
           setBoards([]); // Empty boards - will show message to user
         }
         
@@ -98,12 +107,36 @@ export function FieldMappingWizard() {
           const config = await getMappingConfig();
           if (config) {
             setFields(config.fields || DEFAULT_INTERNAL_FIELDS);
-            setMappings(config.mappings || {});
+            
+            // FIX: Ensure all loaded mappings have boardId
+            const fixedMappings = config.mappings ? Object.fromEntries(
+              Object.entries(config.mappings).map(([fieldId, mapping]) => [
+                fieldId,
+                {
+                  ...mapping,
+                  boardId: mapping.boardId || config.primaryBoardId // Ensure boardId exists
+                }
+              ])
+            ) : {};
+            setMappings(fixedMappings);
             
             // Load primary board from config
             if (config.primaryBoardId) {
               setPrimaryBoardId(config.primaryBoardId);
               setPrimaryBoardName(config.primaryBoardName || "");
+              
+              // Load columns for the saved board
+              try {
+                const columns = await listMondayBoardColumns(config.primaryBoardId);
+                // Update the boards array with columns for the selected board
+                setBoards(prev => prev.map(b => 
+                  b.id === config.primaryBoardId 
+                    ? { ...b, columns: columns || [] } 
+                    : b
+                ));
+              } catch (columnsError: any) {
+                console.error("Failed to load columns for saved board:", columnsError);
+              }
             }
             
             // Load status config
@@ -121,13 +154,17 @@ export function FieldMappingWizard() {
         }
       } catch (error: any) {
         console.error("Error in load:", error);
-        showToast(`Error initializing: ${error.message}`, "error");
+        if (!toastShownRef.current) {
+          toastShownRef.current = true;
+          showToast(`Error initializing: ${error.message}`, "error");
+        }
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, [showToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load status labels when primaryBoardId and deal_status mapping change
   useEffect(() => {
@@ -152,15 +189,21 @@ export function FieldMappingWizard() {
   // Load Deal Won status labels when deal_won_status_column mapping changes
   useEffect(() => {
     async function loadDealWonLabels() {
-      if (!primaryBoardId || !mappings.deal_won_status_column) return;
+      if (!primaryBoardId || !mappings.deal_won_status_column) {
+        console.log("[loadDealWonLabels] Skipping:", { primaryBoardId, hasDealWonColumn: !!mappings.deal_won_status_column });
+        return;
+      }
       
       try {
         setLoadingDealWonLabels(true);
         const columnId = (mappings.deal_won_status_column as any).columnId;
+        console.log("[loadDealWonLabels] Fetching labels for board:", primaryBoardId, "column:", columnId);
         const labels = await listMondayStatusLabels(primaryBoardId, columnId);
+        console.log("[loadDealWonLabels] Received labels:", labels);
         setDealWonStatusLabels((labels || []).map(l => l.label));
       } catch (error: any) {
-        console.error("Failed to load Deal Won labels:", error);
+        console.error("[loadDealWonLabels] Failed to load Deal Won labels:", error);
+        showToast(`Failed to load status labels: ${error.message}`, "error");
         setDealWonStatusLabels([]);
       } finally {
         setLoadingDealWonLabels(false);
@@ -205,6 +248,7 @@ export function FieldMappingWizard() {
     setMappings(prev => ({
       ...prev,
       [fieldId]: {
+        boardId: primaryBoardId, // Add boardId!
         columnId,
         columnType: column?.type
       }
@@ -242,8 +286,9 @@ export function FieldMappingWizard() {
       }
     }
 
-    if (!writebackTargets.assignedAgent) {
-      errors.push("Writeback target for 'Assigned Agent' must be configured");
+    // Validate writeback target has both boardId and columnId
+    if (!writebackTargets.assignedAgent?.boardId || !writebackTargets.assignedAgent?.columnId) {
+      errors.push("Writeback target for 'Assigned Agent' must be fully configured (board + column)");
     }
     
     if (step >= 4) {
@@ -270,14 +315,23 @@ export function FieldMappingWizard() {
       
       if (result?.ok && !result?.hasErrors) {
         const samplesRead = Array.isArray(result.rows) ? result.rows.length : 0;
-        showToast(`Preview successful! ${samplesRead} samples processed`, "success");
+        showToast(`✅ Preview successful! ${samplesRead} samples processed. Configuration is ready to save.`, "success");
       } else if (result?.hasErrors) {
         const errorCount = Array.isArray(result.rows) 
           ? result.rows.filter(r => r.normalizationErrors && r.normalizationErrors.length > 0).length 
           : 0;
-        showToast(`Preview completed with ${errorCount} error(s)`, "warning");
+        showToast(`⚠️ Configuration Valid! ${errorCount} data format warning(s) detected (see below). You can save and proceed.`, "warning");
       } else if (result?.error) {
-        showToast(`Preview failed: ${result.error}`, "error");
+        // Show detailed issues if available
+        if (result?.issues && Array.isArray(result.issues)) {
+          const issueMessages = result.issues.map((issue: any) => 
+            `[${issue.code}] ${issue.message}`
+          ).join('\n');
+          console.error("[handlePreview] Validation issues:", result.issues);
+          showToast(`Preview failed:\n${issueMessages}`, "error");
+        } else {
+          showToast(`Preview failed: ${result.error}`, "error");
+        }
       }
     } catch (error: any) {
       console.error("[handlePreview] Error caught:", error);
@@ -287,32 +341,183 @@ export function FieldMappingWizard() {
     }
   };
 
+  const validateNoDuplicateColumns = (): string[] => {
+    const errors: string[] = [];
+    const columnMap = new Map<string, string[]>(); // "boardId::columnId" -> fieldIds[]
+    
+    Object.entries(mappings).forEach(([fieldId, mapping]) => {
+      if (!mapping?.columnId || !mapping?.boardId) return;
+      
+      const key = `${mapping.boardId}::${mapping.columnId}`;
+      if (!columnMap.has(key)) {
+        columnMap.set(key, []);
+      }
+      columnMap.get(key)!.push(fieldId);
+    });
+    
+    columnMap.forEach((fieldIds, key) => {
+      if (fieldIds.length > 1) {
+        // Allow deal_status + deal_won_status_column exception
+        const isAllowed = 
+          fieldIds.length === 2 &&
+          fieldIds.includes("deal_status") &&
+          fieldIds.includes("deal_won_status_column");
+        
+        if (!isAllowed) {
+          const fieldLabels = fieldIds.map(id => {
+            const field = fields.find(f => f.id === id);
+            return field ? field.label : id;
+          }).join(", ");
+          errors.push(
+            `Multiple fields map to same column (${key}): ${fieldLabels}`
+          );
+        }
+      }
+    });
+    
+    return errors;
+  };
+
   const handleSave = async () => {
     const errors = validateMappings();
-    if (errors.length > 0) {
-      showToast(errors[0], "error");
+    const duplicateErrors = validateNoDuplicateColumns();
+    
+    if (errors.length > 0 || duplicateErrors.length > 0) {
+      showToast([...errors, ...duplicateErrors][0], "error");
       return;
     }
 
     try {
       setSaving(true);
+      
+      // DEBUG: Log current mappings state
+      console.log("[handleSave] Current mappings state:", JSON.stringify(mappings, null, 2));
+      
+      // First, save the internal schema
+      // Convert InternalFieldDefinition to the format expected by backend
+      const schemaFields = fields.map(field => {
+        // Map entity from group (Lead/Agent/Deal -> lead/agent/deal)
+        let entity = "lead";
+        if (field.group === "Agent") entity = "agent";
+        else if (field.group === "Deal") entity = "deal";
+        
+        // Map type: "computed" fields should be mapped as "text" for storage
+        let type = field.type;
+        if (type === "computed") type = "text";
+        
+        // Only mark field as active if it's actually mapped
+        const isMapped = !!(mappings[field.id] && mappings[field.id].columnId);
+        
+        // DEBUG: Log each field's mapping status
+        if (field.id === "lead_source" || field.id === "lead_industry" || field.id === "lead_deal_size" || 
+            field.id === "assigned_agent" || field.id === "next_call_date" || field.id === "deal_won_status_column") {
+          console.log(`[handleSave] Field ${field.id}: isMapped=${isMapped}, mapping=`, mappings[field.id]);
+        }
+        
+        return {
+          id: field.id,
+          label: field.label,
+          entity,
+          type,
+          required: field.required,
+          isCore: field.isCore,
+          active: isMapped, // Active only if mapped! (boolean)
+          description: field.description || "",
+          group: field.group
+        };
+      });
+
+      // Only include active (mapped) fields in schema
+      const activeSchemaFields = schemaFields.filter(f => f.active);
+      
+      const schema = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        fields: activeSchemaFields
+      };
+
+      // DEBUG: Log schema being sent
+      console.log("[handleSave] Schema being sent to server:", JSON.stringify(schema, null, 2));
+      console.log("[handleSave] Schema field IDs:", schema.fields.map((f: any) => f.id));
+      console.log("[handleSave] Schema active count:", schema.fields.filter((f: any) => f.active).length);
+      
+      await saveInternalSchema(schema);
+      console.log("[handleSave] Internal schema saved successfully");
+
+      // Then, save the mapping configuration
+      // Use schemaFields instead of fields to ensure consistency with saved schema
+      const mappingFields = fields.map(field => ({
+        ...field,
+        // Ensure isEnabled matches whether the field is actually mapped
+        isEnabled: !!(mappings[field.id] && mappings[field.id].columnId)
+      }));
+      
       const config: FieldMappingConfig = {
         version: 2,
         updatedAt: new Date().toISOString(),
         primaryBoardId,
         primaryBoardName,
-        mappings,
-        fields,
+        // FIX: Ensure all mappings have boardId (for business validation)
+        mappings: Object.fromEntries(
+          Object.entries(mappings)
+            .filter(([_, mapping]) => mapping && mapping.columnId) // Only include valid mappings
+            .map(([fieldId, mapping]) => [
+              fieldId,
+              {
+                boardId: mapping.boardId || primaryBoardId, // Ensure boardId is always present
+                columnId: mapping.columnId,
+                columnType: mapping.columnType
+              }
+            ])
+        ),
+        fields: mappingFields,
         writebackTargets: {
           assignedAgent: writebackTargets.assignedAgent!
         },
         statusConfig
       };
 
+      // DEBUG: Log config being sent
+      console.log("[handleSave] Mapping config being sent:", JSON.stringify({
+        primaryBoardId: config.primaryBoardId,
+        writebackTargets: config.writebackTargets,
+        mappingsCount: Object.keys(config.mappings).length,
+        fieldsCount: config.fields.length,
+        statusConfig: config.statusConfig
+      }, null, 2));
+
+      // Check for potential validation issues
+      const activeFieldsInSchema = schemaFields.filter(f => f.active);
+      console.log("[handleSave] Active fields in schema:", activeFieldsInSchema.map(f => f.id));
+      console.log("[handleSave] Mapped field IDs:", Object.keys(mappings));
+      console.log("[handleSave] Mapping field IDs:", config.fields.map((f: any) => f.id));
+      console.log("[handleSave] Writeback target:", writebackTargets.assignedAgent);
+      
+      // Enhanced logging: Show detailed column-level mappings
+      console.log("[handleSave] Detailed mappings:");
+      Object.entries(config.mappings).forEach(([fieldId, mapping]) => {
+        const field = fields.find(f => f.id === fieldId);
+        const fieldLabel = field ? field.label : fieldId;
+        console.log(`  ${fieldId} (${fieldLabel}) → ${mapping.columnId} (${mapping.columnType}) on board ${mapping.boardId}`);
+      });
+      
+      console.log("[handleSave] Full mapping config:", JSON.stringify(config, null, 2));
+
       const result = await saveMappingConfig(config);
-      showToast(`Mapping configuration saved successfully (v${result.version})`, "success");
+      showToast(`Configuration saved successfully (schema + mapping v${result.version})`, "success");
     } catch (error: any) {
-      showToast(`Failed to save configuration: ${error.message}`, "error");
+      console.error("[handleSave] Error:", error);
+      
+      // Show detailed validation issues if available
+      if (error.response?.data?.issues && Array.isArray(error.response.data.issues)) {
+        const issueMessages = error.response.data.issues.map((issue: any) => 
+          `[${issue.code}] ${issue.message}`
+        ).join('\n');
+        console.error("[handleSave] Validation issues:", error.response.data.issues);
+        showToast(`Failed to save:\n${issueMessages}`, "error");
+      } else {
+        showToast(`Failed to save configuration: ${error.message}`, "error");
+      }
     } finally {
       setSaving(false);
     }
@@ -692,7 +897,13 @@ export function FieldMappingWizard() {
                 ← Back
               </button>
               <button
-                onClick={() => setStep(4)}
+                onClick={() => {
+                  if (!mappings.deal_won_status_column) {
+                    showToast("Please map 'Deal Won Status Column' field before proceeding to Step 4", "warning");
+                    return;
+                  }
+                  setStep(4);
+                }}
                 disabled={validateMappings().length > 0}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -768,10 +979,30 @@ export function FieldMappingWizard() {
                 ) : loadingDealWonLabels ? (
                   <Skeleton className="h-12 w-full" />
                 ) : dealWonStatusLabels.length === 0 ? (
-                  <div className={`p-3 rounded border ${
-                    isDark ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-gray-50 border-gray-300 text-gray-600"
+                  <div className={`p-4 rounded border ${
+                    isDark ? "bg-red-900/20 border-red-800" : "bg-red-50 border-red-300"
                   }`}>
-                    No status options found in the selected column. Please check your Monday.com board configuration.
+                    <p className={`font-medium mb-2 ${isDark ? "text-red-400" : "text-red-700"}`}>
+                      ⚠️ No Status Options Found
+                    </p>
+                    <p className={`text-sm mb-3 ${isDark ? "text-red-300" : "text-red-600"}`}>
+                      The selected column doesn't have any status labels. Please:
+                    </p>
+                    <ul className={`text-sm space-y-1 mb-3 ${isDark ? "text-red-300" : "text-red-600"}`}>
+                      <li>• Check that "Deal Won Status Column" is mapped to a <strong>status column</strong> in Monday.com</li>
+                      <li>• Verify the column has status labels configured in your Monday board</li>
+                      <li>• Try refreshing the page after configuring the column</li>
+                    </ul>
+                    <button
+                      onClick={() => setStep(3)}
+                      className={`px-4 py-2 rounded font-medium ${
+                        isDark 
+                          ? "bg-red-600 hover:bg-red-700 text-white" 
+                          : "bg-red-600 hover:bg-red-700 text-white"
+                      }`}
+                    >
+                      ← Go Back to Step 3
+                    </button>
                   </div>
                 ) : (
                   <MultiSelectDropdown
@@ -867,10 +1098,30 @@ export function FieldMappingWizard() {
                 ) : loadingDealWonLabels ? (
                   <Skeleton className="h-12 w-full" />
                 ) : dealWonStatusLabels.length === 0 ? (
-                  <div className={`p-3 rounded border ${
-                    isDark ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-gray-50 border-gray-300 text-gray-600"
+                  <div className={`p-4 rounded border ${
+                    isDark ? "bg-red-900/20 border-red-800" : "bg-red-50 border-red-300"
                   }`}>
-                    No status options found in the selected column. Please check your Monday.com board configuration.
+                    <p className={`font-medium mb-2 ${isDark ? "text-red-400" : "text-red-700"}`}>
+                      ⚠️ No Status Options Found
+                    </p>
+                    <p className={`text-sm mb-3 ${isDark ? "text-red-300" : "text-red-600"}`}>
+                      The selected column doesn't have any status labels. Please:
+                    </p>
+                    <ul className={`text-sm space-y-1 mb-3 ${isDark ? "text-red-300" : "text-red-600"}`}>
+                      <li>• Check that "Deal Won Status Column" is mapped to a <strong>status column</strong> in Monday.com</li>
+                      <li>• Verify the column has status labels configured in your Monday board</li>
+                      <li>• Try refreshing the page after configuring the column</li>
+                    </ul>
+                    <button
+                      onClick={() => setStep(3)}
+                      className={`px-4 py-2 rounded font-medium ${
+                        isDark 
+                          ? "bg-red-600 hover:bg-red-700 text-white" 
+                          : "bg-red-600 hover:bg-red-700 text-white"
+                      }`}
+                    >
+                      ← Go Back to Step 3
+                    </button>
                   </div>
                 ) : (
                   <MultiSelectDropdown
@@ -934,10 +1185,30 @@ export function FieldMappingWizard() {
                 ) : loadingDealWonLabels ? (
                   <Skeleton className="h-12 w-full" />
                 ) : dealWonStatusLabels.length === 0 ? (
-                  <div className={`p-3 rounded border ${
-                    isDark ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-gray-50 border-gray-300 text-gray-600"
+                  <div className={`p-4 rounded border ${
+                    isDark ? "bg-red-900/20 border-red-800" : "bg-red-50 border-red-300"
                   }`}>
-                    No status options found in the selected column. Please check your Monday.com board configuration.
+                    <p className={`font-medium mb-2 ${isDark ? "text-red-400" : "text-red-700"}`}>
+                      ⚠️ No Status Options Found
+                    </p>
+                    <p className={`text-sm mb-3 ${isDark ? "text-red-300" : "text-red-600"}`}>
+                      The selected column doesn't have any status labels. Please:
+                    </p>
+                    <ul className={`text-sm space-y-1 mb-3 ${isDark ? "text-red-300" : "text-red-600"}`}>
+                      <li>• Check that "Deal Won Status Column" is mapped to a <strong>status column</strong> in Monday.com</li>
+                      <li>• Verify the column has status labels configured in your Monday board</li>
+                      <li>• Try refreshing the page after configuring the column</li>
+                    </ul>
+                    <button
+                      onClick={() => setStep(3)}
+                      className={`px-4 py-2 rounded font-medium ${
+                        isDark 
+                          ? "bg-red-600 hover:bg-red-700 text-white" 
+                          : "bg-red-600 hover:bg-red-700 text-white"
+                      }`}
+                    >
+                      ← Go Back to Step 3
+                    </button>
                   </div>
                 ) : (
                   <MultiSelectDropdown
@@ -1117,14 +1388,21 @@ export function FieldMappingWizard() {
                     ✓ {Array.isArray(previewResult.rows) ? previewResult.rows.length : 0} samples processed
                   </div>
                   {previewResult.hasErrors && Array.isArray(previewResult.rows) && (
-                    <div className={`mt-3 ${isDark ? "text-red-400" : "text-red-600"}`}>
-                      <div className="font-medium mb-1">Normalization Errors:</div>
-                      <ul className="space-y-1">
+                    <div className={`mt-3 ${isDark ? "text-yellow-400" : "text-yellow-700"}`}>
+                      <div className="font-medium mb-2 flex items-center gap-2">
+                        <span>⚠️ Data Format Warnings (Non-Critical):</span>
+                      </div>
+                      <div className={`text-sm mb-2 ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                        These are Monday.com data format differences. They don't prevent saving or routing - the system will handle them automatically.
+                      </div>
+                      <ul className="space-y-1 text-sm">
                         {previewResult.rows
                           .filter(row => row.normalizationErrors && row.normalizationErrors.length > 0)
                           .map((row, idx) => (
                             <li key={idx}>
-                              • {row.entity}: {row.normalizationErrors?.join(", ")}
+                              • {row.entity}: {row.normalizationErrors?.map((err: any) => 
+                                typeof err === 'string' ? err : (err?.message || JSON.stringify(err))
+                              ).join(", ")}
                             </li>
                           ))}
                       </ul>

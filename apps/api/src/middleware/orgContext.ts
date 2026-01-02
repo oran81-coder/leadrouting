@@ -32,23 +32,40 @@ export function orgContextMiddleware(
   next: NextFunction
 ) {
   try {
+    // PUBLIC ROUTES - Skip org context requirement for auth endpoints
+    const publicPaths = [
+      '/auth/login',
+      '/auth/register',
+      '/auth/refresh',
+      '/auth/monday',
+      '/auth/register-org',
+      '/health',
+      '/webhooks'
+    ];
+
+    const isPublicPath = publicPaths.some(path => req.path.startsWith(path));
+    if (isPublicPath) {
+      log.debug("Skipping org context for public path", { path: req.path });
+      return next();
+    }
+
     // Try to extract from JWT token first (Authorization header)
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.substring(7);
-      
+
       try {
         const payload = jwt.verify(token, env.JWT_SECRET) as any;
         req.orgId = payload.orgId;
         req.userId = payload.userId;
         req.userRole = payload.role;
-        
-        log.debug("Organization context from JWT", { 
-          orgId: req.orgId, 
+
+        log.debug("Organization context from JWT", {
+          orgId: req.orgId,
           userId: req.userId,
-          path: req.path 
+          path: req.path
         });
-        
+
         return next();
       } catch (error) {
         // Token invalid or expired - will fall through to API key check
@@ -63,12 +80,12 @@ export function orgContextMiddleware(
       const orgId = getOrgIdFromApiKey(apiKey);
       if (orgId) {
         req.orgId = orgId;
-        
-        log.debug("Organization context from API key", { 
-          orgId: req.orgId, 
-          path: req.path 
+
+        log.debug("Organization context from API key", {
+          orgId: req.orgId,
+          path: req.path
         });
-        
+
         return next();
       }
     }
@@ -76,28 +93,28 @@ export function orgContextMiddleware(
     // No valid auth found - check if AUTH is disabled
     if (!env.AUTH_ENABLED) {
       // When auth is disabled, use default organization
-      req.orgId = "org_1";
-      
-      log.debug("Using default organization (AUTH_ENABLED=false)", { 
+      req.orgId = process.env.DEFAULT_ORG_ID || "cmjt563ps000037hg6i4dvl7m";
+
+      log.debug("Using default organization (AUTH_ENABLED=false)", {
         orgId: req.orgId,
-        path: req.path 
+        path: req.path
       });
-      
+
       return next();
     }
-    
-    log.warn("No valid organization context found", { 
+
+    log.warn("No valid organization context found", {
       path: req.path,
       hasAuthHeader: !!authHeader,
-      hasApiKey: !!apiKey 
+      hasApiKey: !!apiKey
     });
-    
+
     throw new UnauthorizedError("Invalid or missing authentication credentials");
-    
+
   } catch (error) {
     // If AUTH is disabled and there's an error, use default org
     if (!env.AUTH_ENABLED && !req.orgId) {
-      req.orgId = "org_1";
+      req.orgId = process.env.DEFAULT_ORG_ID || "cmjt563ps000037hg6i4dvl7m";
       return next();
     }
     next(error);
@@ -112,7 +129,7 @@ export function orgContextMiddleware(
 function getOrgIdFromApiKey(apiKey: string): string | null {
   // Default organization for development API key
   if (apiKey === "dev_key_123" || apiKey === env.API_KEY) {
-    return "org_default_001";
+    return process.env.DEFAULT_ORG_ID || "org_1";
   }
 
   // TODO: Query database for API key -> orgId mapping

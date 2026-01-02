@@ -73,6 +73,7 @@ export function validateSchemaAndMapping(schema: InternalSchema, mapping: FieldM
 
   // 4) Optional: detect multiple internal fields mapped to same (boardId,columnId)
   // This is allowed in some cases, but usually indicates a mistake.
+  // Exception: deal_won_status_column is metadata and can point to same column as deal_status
   const seen = new Map<string, string>(); // key -> fieldId
   for (const f of activeFields) {
     const ref = mapping.mappings[f.id];
@@ -80,11 +81,18 @@ export function validateSchemaAndMapping(schema: InternalSchema, mapping: FieldM
     const key = `${ref.boardId}::${ref.columnId}`;
     const prev = seen.get(key);
     if (prev && prev !== f.id) {
-      issues.push({
-        code: "MAPPING.DUPLICATE_COLUMN_REF",
-        message: `Multiple internal fields map to the same Monday column (${key}). Fields: '${prev}' and '${f.id}'.`,
-        fieldId: f.id,
-      });
+      // Allow deal_won_status_column to share the same column as deal_status (it's metadata)
+      const isMetadataException = 
+        (f.id === "deal_won_status_column" && prev === "deal_status") ||
+        (prev === "deal_won_status_column" && f.id === "deal_status");
+      
+      if (!isMetadataException) {
+        issues.push({
+          code: "MAPPING.DUPLICATE_COLUMN_REF",
+          message: `Multiple internal fields map to the same Monday column (${key}). Fields: '${prev}' and '${f.id}'.`,
+          fieldId: f.id,
+        });
+      }
     } else {
       seen.set(key, f.id);
     }

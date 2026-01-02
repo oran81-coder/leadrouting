@@ -1,5 +1,5 @@
 import { getPrisma } from "../../../../packages/core/src/db/prisma";
-const ORG_ID = "org_1";
+const ORG_ID = process.env.DEFAULT_ORG_ID || "cmjq2ces90000rbcw8s5iqlcz";
 
 export class PrismaAgentMetricsRepo {
   async upsert(agentUserId: string, windowDays: number, patch: any) {

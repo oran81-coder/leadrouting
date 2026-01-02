@@ -41,6 +41,7 @@ export function AdminScreen() {
   const [routingMode, setRoutingMode] = useState<"MANUAL_APPROVAL" | "AUTO">("MANUAL_APPROVAL");
   const [routingModeSaving, setRoutingModeSaving] = useState(false);
   const [routingModeMsg, setRoutingModeMsg] = useState<string | null>(null);
+  const [showExp, setShowExp] = useState(false);
 
   useEffect(() => {
     loadMondayStatus();
@@ -183,11 +184,10 @@ export function AdminScreen() {
           </div>
           {mondayStatus && (
             <span
-              className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold shadow-sm ${
-                mondayStatus.connected
-                  ? "bg-gradient-to-r from-green-400 to-emerald-500 text-white"
-                  : "bg-gradient-to-r from-red-400 to-rose-500 text-white"
-              }`}
+              className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold shadow-sm ${mondayStatus.connected
+                ? "bg-gradient-to-r from-green-400 to-emerald-500 text-white"
+                : "bg-gradient-to-r from-red-400 to-rose-500 text-white"
+                }`}
             >
               {mondayStatus.connected ? "✓ Connected" : "✗ Not Connected"}
             </span>
@@ -283,18 +283,16 @@ export function AdminScreen() {
               {/* Manual Approval Option */}
               <button
                 onClick={() => setRoutingMode("MANUAL_APPROVAL")}
-                className={`p-4 rounded-lg border-2 transition-all text-left ${
-                  routingMode === "MANUAL_APPROVAL"
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                    : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
-                }`}
+                className={`p-4 rounded-lg border-2 transition-all text-left ${routingMode === "MANUAL_APPROVAL"
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                  : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+                  }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    routingMode === "MANUAL_APPROVAL"
-                      ? "border-blue-500 bg-blue-500"
-                      : "border-gray-300 dark:border-gray-600"
-                  }`}>
+                  <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${routingMode === "MANUAL_APPROVAL"
+                    ? "border-blue-500 bg-blue-500"
+                    : "border-gray-300 dark:border-gray-600"
+                    }`}>
                     {routingMode === "MANUAL_APPROVAL" && (
                       <div className="w-2 h-2 bg-white rounded-full" />
                     )}
@@ -319,18 +317,16 @@ export function AdminScreen() {
               {/* Auto Assignment Option */}
               <button
                 onClick={() => setRoutingMode("AUTO")}
-                className={`p-4 rounded-lg border-2 transition-all text-left ${
-                  routingMode === "AUTO"
-                    ? "border-green-500 bg-green-50 dark:bg-green-900/20"
-                    : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
-                }`}
+                className={`p-4 rounded-lg border-2 transition-all text-left ${routingMode === "AUTO"
+                  ? "border-green-500 bg-green-50 dark:bg-green-900/20"
+                  : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+                  }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    routingMode === "AUTO"
-                      ? "border-green-500 bg-green-500"
-                      : "border-gray-300 dark:border-gray-600"
-                  }`}>
+                  <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${routingMode === "AUTO"
+                    ? "border-green-500 bg-green-500"
+                    : "border-gray-300 dark:border-gray-600"
+                    }`}>
                     {routingMode === "AUTO" && (
                       <div className="w-2 h-2 bg-white rounded-full" />
                     )}
@@ -367,11 +363,10 @@ export function AdminScreen() {
 
           {/* Status Message */}
           {routingModeMsg && (
-            <div className={`p-3 rounded-lg text-sm ${
-              routingModeMsg.includes("✅")
-                ? "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200"
-                : "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200"
-            }`}>
+            <div className={`p-3 rounded-lg text-sm ${routingModeMsg.includes("✅")
+              ? "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200"
+              : "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200"
+              }`}>
               {routingModeMsg}
             </div>
           )}
@@ -390,8 +385,17 @@ export function AdminScreen() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   KPI Weights Configuration
+                  <button
+                    onClick={() => setShowExp(!showExp)}
+                    className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-blue-600 dark:text-blue-400 transition-colors"
+                    title="How does it work?"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Fine-tune routing intelligence
@@ -464,7 +468,7 @@ export function AdminScreen() {
                     <span className="text-2xl font-semibold text-gray-600 dark:text-gray-400">%</span>
                   </div>
                 </div>
-                
+
                 {/* Status Indicator */}
                 <div className="flex flex-col items-center">
                   {Math.abs(Object.values(kpiWeights).reduce((sum, w) => sum + w, 0) - 100) < 0.01 ? (
@@ -488,20 +492,81 @@ export function AdminScreen() {
                   )}
                 </div>
               </div>
-              
+
               {/* Progress Bar */}
               <div className="mt-4 h-3 bg-white dark:bg-gray-700 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full transition-all duration-500 ${
-                    Math.abs(Object.values(kpiWeights).reduce((sum, w) => sum + w, 0) - 100) < 0.01
-                      ? 'bg-gradient-to-r from-green-400 to-emerald-500'
-                      : 'bg-gradient-to-r from-amber-400 to-orange-500'
-                  }`}
+                <div
+                  className={`h-full transition-all duration-500 ${Math.abs(Object.values(kpiWeights).reduce((sum, w) => sum + w, 0) - 100) < 0.01
+                    ? 'bg-gradient-to-r from-green-400 to-emerald-500'
+                    : 'bg-gradient-to-r from-amber-400 to-orange-500'
+                    }`}
                   style={{ width: `${Math.min(Object.values(kpiWeights).reduce((sum, w) => sum + w, 0), 100)}%` }}
                 />
               </div>
             </div>
           </div>
+
+          {/* Educational Explanation Box */}
+          {showExp && (
+            <div className="mb-8 p-6 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <h4 className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2 text-right w-full" dir="rtl">
+                  <span>💡</span> איך מנוע החוקים עובד?
+                </h4>
+                <button onClick={() => setShowExp(false)} className="text-blue-400 hover:text-blue-600 transition-colors">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-6 text-sm text-gray-800 dark:text-gray-200" dir="rtl">
+                <section>
+                  <h5 className="font-bold text-blue-800 dark:text-blue-300 mb-1 leading-relaxed text-right">מה זה ה-Weighted Average (ממוצע משוקלל)?</h5>
+                  <p className="text-right">הציון הסופי של הסוכן נקבע לפי מה שחשוב לכם בעסק. כל מדד (KPI) מקבל <b>ציון גולמי</b> (כמה הסוכן טוב בתחום הזה) שמוכפל ב-<b>משקל</b> (כמה המדד הזה חשוב לכם). סכום כל המכפלות יוצר את הציון המשוקלל הסופי.</p>
+                </section>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-right">
+                  <section>
+                    <h5 className="font-bold text-blue-700 dark:text-blue-400 mb-1">⚖️ זמינות (Capacity)</h5>
+                    <p>כמה לידים פתוחים (Active Leads) יש לסוכן לעומת המכסה שלו. סוכן פנוי לגמרי יקבל 100 נקודות גולמיות.</p>
+                  </section>
+                  <section>
+                    <h5 className="font-bold text-blue-700 dark:text-blue-400 mb-1">🎯 מומחיות תחום (Industry Match)</h5>
+                    <p>התאמה בין תחום הפעילות של הליד לבין אחוזי ההצלחה של הסוכן באותו תחום בעבר.</p>
+                  </section>
+                  <section>
+                    <h5 className="font-bold text-blue-700 dark:text-blue-400 mb-1">🏆 הצלחה היסטורית (Conversion Rate)</h5>
+                    <p>אחוז ההמרה הכללי של הסוכן (סך עסקאות חלקי סך לידים) לאורך כל הזמן.</p>
+                  </section>
+                  <section>
+                    <h5 className="font-bold text-blue-700 dark:text-blue-400 mb-1">📊 ביצועים לאחרונה</h5>
+                    <p>אחוז ההמרה ב-30 הימים האחרונים בלבד (ניתן לשינוי), כדי לזהות סוכנים בכושר "שיא".</p>
+                  </section>
+                  <section>
+                    <h5 className="font-bold text-blue-700 dark:text-blue-400 mb-1">⏱️ מהירות תגובה</h5>
+                    <p>הזמן הממוצע שלוקח לסוכן מרגע שקיבל ליד ועד שיצר קשר ראשוני (סטטוס עודכן ב-Monday).</p>
+                  </section>
+                  <section>
+                    <h5 className="font-bold text-blue-700 dark:text-blue-400 mb-1">🏁 מהירות סגירה</h5>
+                    <p>כמה ימים בממוצע לוקח לסוכן להעביר ליד ממצב "חדש" למצב "סגור-זכייה".</p>
+                  </section>
+                  <section>
+                    <h5 className="font-bold text-blue-700 dark:text-blue-400 mb-1">💰 גודל עסקה ממוצע</h5>
+                    <p>יכולת הסוכן לטפל בעסקאות גדולות לעומת השווי המוערך של הליד הנוכחי.</p>
+                  </section>
+                  <section>
+                    <h5 className="font-bold text-blue-700 dark:text-blue-400 mb-1">🔥 מומנטום (Hot Streak)</h5>
+                    <p>זיהוי "רצף ניצחונות" - סוכנים שסגרו מספר רב של עסקאות בפרק זמן קצר מאוד.</p>
+                  </section>
+                </div>
+
+                <div className="bg-blue-100/50 dark:bg-blue-900/30 p-3 rounded-lg border-r-4 border-blue-500 italic text-right">
+                  <b>דוגמה:</b> אם "זמינות" חשובה לכם ב-10% ו"מומחיות" ב-90%, המערכת תבחר סוכן מומחה מאוד גם אם הוא עמוס בלידים, כי זה סדר העדיפות שהגדרתם.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* KPI Categories */}
           <div className="space-y-6">
@@ -542,7 +607,7 @@ export function AdminScreen() {
                     </div>
                   </div>
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-300"
                       style={{ width: `${kpiWeights.domainExpertise}%` }}
                     />
@@ -579,7 +644,7 @@ export function AdminScreen() {
                     </div>
                   </div>
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-purple-400 to-purple-600 transition-all duration-300"
                       style={{ width: `${kpiWeights.conversionHistorical}%` }}
                     />
@@ -616,7 +681,7 @@ export function AdminScreen() {
                     </div>
                   </div>
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-indigo-400 to-indigo-600 transition-all duration-300"
                       style={{ width: `${kpiWeights.recentPerformance}%` }}
                     />
@@ -674,7 +739,7 @@ export function AdminScreen() {
                     </div>
                   </div>
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-300"
                       style={{ width: `${kpiWeights.availability}%` }}
                     />
@@ -711,7 +776,7 @@ export function AdminScreen() {
                     </div>
                   </div>
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-red-400 to-red-600 transition-all duration-300"
                       style={{ width: `${kpiWeights.hotAgent}%` }}
                     />
@@ -778,7 +843,7 @@ export function AdminScreen() {
                     </div>
                   </div>
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-300"
                       style={{ width: `${kpiWeights.responseTime}%` }}
                     />
@@ -815,7 +880,7 @@ export function AdminScreen() {
                     </div>
                   </div>
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-teal-400 to-teal-600 transition-all duration-300"
                       style={{ width: `${kpiWeights.avgTimeToClose}%` }}
                     />
@@ -852,7 +917,7 @@ export function AdminScreen() {
                     </div>
                   </div>
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-300"
                       style={{ width: `${kpiWeights.avgDealSize}%` }}
                     />
@@ -881,7 +946,7 @@ export function AdminScreen() {
                 "💾 Save KPI Weights"
               )}
             </button>
-            
+
             <button
               onClick={() => {
                 if (confirm('Reset to default weights?')) {

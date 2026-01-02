@@ -12,10 +12,12 @@ type ProposalDetailModalProps = {
 export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: ProposalDetailModalProps) {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
-  
+
   // Extract explanation from explainability
   const explainability = proposal.explains as any;
-  
+
+  const assigneeName = proposal.suggestedAssigneeName || proposal.suggestedAssigneeRaw || "Unknown";
+
   // Support both old format (string) and new format (RoutingExplanation object)
   let explanation = "No explanation available";
   if (typeof explainability === 'string') {
@@ -25,17 +27,70 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
     // New format: RoutingExplanation object
     explanation = explainability.summary || explainability.explanation || "No explanation available";
   }
-  
+
+  // Dynamic fix for existing proposals: Replace numeric ID with agent name if present in text
+  if (proposal.suggestedAssigneeRaw && assigneeName && assigneeName !== proposal.suggestedAssigneeRaw) {
+    // Try to replace both absolute matches and word-boundary matches
+    const escapedRaw = proposal.suggestedAssigneeRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const idRegexGlobal = new RegExp(escapedRaw, 'g');
+    if (idRegexGlobal.test(explanation)) {
+      explanation = explanation.replace(idRegexGlobal, assigneeName);
+    }
+  }
+
+  // Fallback for old proposals: If summary looks like a formulaic old summary, try to beautify it
+  if (explanation.includes('is the best match') || (explanation.includes('Primary reason:') || explanation.includes('Primary driver:'))) {
+    // Attempt to convert "Name is the best match (score: 100/100). Primary reason: X" 
+    // to "... was identified as the optimal candidate..."
+    explanation = explanation
+      .replace(/is the best match/i, 'was identified as the optimal candidate')
+      .replace(/\. Primary reason:/i, '. This recommendation is primarily driven by')
+      .replace(/\. Primary driver:/i, '. This recommendation is primarily driven by');
+  }
+
   // Extract match score from multiple possible sources
-  const matchScore = proposal.matchScore 
-    ?? explainability?.recommendedAgent?.score 
-    ?? explainability?.score 
+  const matchScore = (proposal as any).matchScore
+    ?? explainability?.recommendedAgent?.score
+    ?? explainability?.score
     ?? null;
-  
-  const assigneeName = proposal.suggestedAssigneeName || proposal.suggestedAssigneeRaw || "Unknown";
-  
-  // Extract breakdown from explainability (new format only)
-  const breakdown = explainability?.breakdown || explainability?.recommendedAgent?.breakdown || null;
+
+  // Extract breakdown from explainability (supports both old and new formats)
+  // Old format: { industryMatch: 85, availability: 90, ... }
+  // New format: { primaryReasons: [...], secondaryFactors: [...] }
+  let breakdown = explainability?.breakdown || explainability?.recommendedAgent?.breakdown || null;
+
+  // If new format detected (with primaryReasons), extract KPI scores from it
+  if (breakdown && breakdown.primaryReasons) {
+    // Convert new format to old format for backwards compatibility
+    const kpiScores: Record<string, number> = {};
+
+    // Extract from primary reasons
+    for (const reason of breakdown.primaryReasons || []) {
+      if (reason.category) {
+        // Prefer metricScore (0-100) if available, fall back to contribution
+        const scoreValue = reason.matchScore !== undefined ? Math.round(reason.matchScore * 100) : Math.round(reason.contribution);
+        kpiScores[reason.category] = scoreValue;
+      }
+    }
+
+    // Extract from secondary factors
+    for (const factor of breakdown.secondaryFactors || []) {
+      if (factor.category) {
+        const scoreValue = factor.matchScore !== undefined ? Math.round(factor.matchScore * 100) : Math.round(factor.contribution);
+        kpiScores[factor.category] = scoreValue;
+      }
+    }
+
+    // Use extracted KPI scores if available, otherwise keep original breakdown
+    if (Object.keys(kpiScores).length > 0) {
+      breakdown = kpiScores;
+    }
+  }
+
+  // Determine if we are showing raw metric scores (0-100) or contribution points (weighted)
+  // New proposals store raw matchScore in the breakdown reasons.
+  const isRawScore = (explainability?.breakdown?.primaryReasons || [])
+    .some((r: any) => r.matchScore !== undefined);
 
   return (
     <div
@@ -105,7 +160,7 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
                 )}
               </div>
             </div>
-            
+
             {/* Explanation */}
             <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
               <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -137,10 +192,10 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
                     </svg>
                     Score Breakdown
                   </span>
-                  <svg 
+                  <svg
                     className={`w-5 h-5 text-gray-600 dark:text-gray-400 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
-                    fill="none" 
-                    stroke="currentColor" 
+                    fill="none"
+                    stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -151,103 +206,87 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
                   <ScoreBreakdownSkeleton />
                 ) : showBreakdown && (
                   <div className="mt-3 space-y-2 bg-white/50 dark:bg-gray-900/30 rounded-lg p-4">
-                    {breakdown.industryMatch !== undefined && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <span className="text-lg">🎯</span>
-                          Industry Expertise
-                        </span>
-                        <span className="font-semibold text-blue-900 dark:text-blue-100">
-                          {breakdown.industryMatch}/100
-                        </span>
+                    {/* Score Breakdown List */}
+                    <div className="space-y-4">
+                      {/* Score Breakdown List */}
+                      <div className="space-y-4">
+                        {(() => {
+                          // Map technical keys to friendly labels and icons
+                          const metricMap: Record<string, { label: string; icon: string; color: string }> = {
+                            kpi_workload: { label: "Current Capacity", icon: "⚖️", color: "bg-amber-600" },
+                            kpi_industry_match: { label: "Domain Expertise", icon: "🎯", color: "bg-blue-600" },
+                            kpi_conversion_historical: { label: "Historical Success", icon: "🏆", color: "bg-green-600" },
+                            kpi_recent_performance: { label: "Recent Performance", icon: "📊", color: "bg-cyan-600" },
+                            kpi_response_time: { label: "Response Speed", icon: "⏱️", color: "bg-indigo-600" },
+                            kpi_avg_time_to_close: { label: "Closing Speed", icon: "🏁", color: "bg-purple-600" },
+                            kpi_avg_deal_size: { label: "Avg Deal Size", icon: "💰", color: "bg-emerald-600" },
+                            kpi_hot_streak: { label: "Momentum", icon: "🔥", color: "bg-orange-600" }
+                          };
+
+                          // Mapping for legacy/alternative keys
+                          const legacyMap: Record<string, string> = {
+                            capacity: 'kpi_workload',
+                            workload: 'kpi_workload',
+                            industryMatch: 'kpi_industry_match',
+                            expertise: 'kpi_industry_match',
+                            conversionRate: 'kpi_conversion_historical',
+                            performance: 'kpi_recent_performance',
+                            momentum: 'kpi_hot_streak',
+                            hotStreak: 'kpi_hot_streak',
+                            responseSpeed: 'kpi_response_time',
+                          };
+
+                          // Build a unified score map
+                          const finalScores: Record<string, number> = {};
+                          // Initialize all with 0
+                          Object.keys(metricMap).forEach(k => finalScores[k] = 0);
+
+                          // Fill with actual data
+                          Object.entries(breakdown || {}).forEach(([key, value]) => {
+                            const normalizedKey = legacyMap[key] || key;
+                            if (finalScores[normalizedKey] !== undefined && typeof value === 'number') {
+                              finalScores[normalizedKey] = value;
+                            }
+                          });
+
+                          // Render all 8 in fixed order
+                          return Object.entries(metricMap).map(([key, meta]) => {
+                            const value = finalScores[key];
+                            return (
+                              <div key={key} className="space-y-1.5">
+                                <div className="flex justify-between items-center text-sm">
+                                  <span className="text-gray-700 dark:text-gray-300 font-medium flex items-center gap-2">
+                                    <span className="text-base">{meta.icon}</span>
+                                    {meta.label}
+                                  </span>
+                                  <span className="font-bold text-blue-900 dark:text-blue-100">
+                                    {Math.round(value)}{isRawScore ? "/100" : " pts"}
+                                  </span>
+                                </div>
+                                <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
+                                  <div
+                                    className={`h-full ${meta.color} transition-all duration-1000 ease-out`}
+                                    style={{ width: `${isRawScore ? Math.min(100, Math.max(0, value)) : Math.min(100, (value / 25) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
-                    )}
-                    {breakdown.availability !== undefined && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <span className="text-lg">⚡</span>
-                          Availability
-                        </span>
-                        <span className="font-semibold text-blue-900 dark:text-blue-100">
-                          {breakdown.availability}/100
-                        </span>
-                      </div>
-                    )}
-                    {breakdown.conversionRate !== undefined && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <span className="text-lg">📈</span>
-                          Conversion Rate
-                        </span>
-                        <span className="font-semibold text-blue-900 dark:text-blue-100">
-                          {breakdown.conversionRate}/100
-                        </span>
-                      </div>
-                    )}
-                    {breakdown.hotStreak !== undefined && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <span className="text-lg">🔥</span>
-                          Hot Streak
-                        </span>
-                        <span className="font-semibold text-blue-900 dark:text-blue-100">
-                          {breakdown.hotStreak}/100
-                        </span>
-                      </div>
-                    )}
-                    {breakdown.responseSpeed !== undefined && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <span className="text-lg">⏱️</span>
-                          Response Speed
-                        </span>
-                        <span className="font-semibold text-blue-900 dark:text-blue-100">
-                          {breakdown.responseSpeed}/100
-                        </span>
-                      </div>
-                    )}
-                    {breakdown.dealSize !== undefined && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <span className="text-lg">💰</span>
-                          Deal Size History
-                        </span>
-                        <span className="font-semibold text-blue-900 dark:text-blue-100">
-                          {breakdown.dealSize}/100
-                        </span>
-                      </div>
-                    )}
-                    {breakdown.burnout !== undefined && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <span className="text-lg">🧘</span>
-                          Burnout Level
-                        </span>
-                        <span className="font-semibold text-blue-900 dark:text-blue-100">
-                          {breakdown.burnout}/100
-                        </span>
-                      </div>
-                    )}
-                    {breakdown.recentPerformance !== undefined && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <span className="text-lg">📊</span>
-                          Recent Performance
-                        </span>
-                        <span className="font-semibold text-blue-900 dark:text-blue-100">
-                          {breakdown.recentPerformance}/100
-                        </span>
-                      </div>
-                    )}
-                    
+                    </div>
+
                     {matchScore != null && (
-                      <div className="mt-4 pt-3 border-t border-blue-200 dark:border-blue-700 flex justify-between items-center">
-                        <span className="text-sm font-bold text-gray-800 dark:text-gray-200">
-                          💡 Weighted Average
+                      <div className="mt-6 pt-4 border-t border-blue-200 dark:border-blue-700 flex justify-between items-center">
+                        <span className="text-base font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                          <span className="animate-pulse">💡</span> Weighted Average
                         </span>
-                        <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                          {Math.round(matchScore)}/100
-                        </span>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-black text-blue-600 dark:text-blue-400">
+                            {Math.round(matchScore)}
+                          </span>
+                          <span className="text-sm font-bold text-blue-400">/100</span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -282,7 +321,7 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
                             #{alt.rank}
                           </span>
                         </div>
-                        
+
                         {/* Agent Info */}
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold text-gray-900 dark:text-white">
@@ -300,7 +339,7 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
                           )}
                         </div>
                       </div>
-                      
+
                       {/* Score */}
                       <div className="flex-shrink-0 text-right ml-4">
                         <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -319,7 +358,7 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
                   </div>
                 ))}
               </div>
-              
+
               {/* Info Message */}
               <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-start gap-2">
                 <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -333,19 +372,69 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
           )}
 
           {/* Status Badge */}
-          <div>
+          <div className="flex items-center gap-2">
             <span
-              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                proposal.status === "PENDING"
-                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                  : proposal.status === "APPROVED"
+              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${proposal.status === "PENDING"
+                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                : proposal.status === "APPROVED"
                   ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                   : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-              }`}
+                }`}
             >
               {proposal.status}
             </span>
+            {proposal.wasRescored && (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
+                📊 Data Updated
+              </span>
+            )}
           </div>
+
+          {/* Data Update Details */}
+          {proposal.wasRescored && proposal.dataChanges && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <svg className="w-5 h-5 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Data Update Information
+              </h4>
+              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 space-y-3">
+                <div>
+                  <dt className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Updated At
+                  </dt>
+                  <dd className="mt-1 text-sm text-gray-900 dark:text-white">
+                    {new Date(proposal.dataUpdatedAt!).toLocaleString()}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Changed Fields
+                  </dt>
+                  <dd className="mt-2 space-y-2">
+                    {(proposal.dataChanges as any[]).map((change: any, index: number) => (
+                      <div key={index} className="text-sm bg-white dark:bg-gray-800 rounded p-2 border border-orange-200 dark:border-orange-800">
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          {change.fieldName}
+                        </div>
+                        <div className="text-gray-600 dark:text-gray-400 mt-1">
+                          <span className="line-through">{change.oldValue || 'null'}</span>
+                          {' → '}
+                          <span className="font-medium text-orange-600 dark:text-orange-400">{change.newValue || 'null'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </dd>
+                </div>
+                <div className="pt-3 border-t border-orange-200 dark:border-orange-700">
+                  <p className="text-sm text-orange-800 dark:text-orange-200">
+                    ℹ️ This proposal was automatically re-scored when the lead data changed in Monday.com. The recommendation and match score have been updated to reflect the latest information.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">

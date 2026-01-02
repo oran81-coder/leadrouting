@@ -47,13 +47,13 @@ export interface DomainExpertise {
 export async function calculateAgentDomainProfile(
   agentUserId: string,
   orgId: string,
-  minLeadsThreshold: number = 5
+  minLeadsThreshold: number = 1
 ): Promise<AgentDomainProfile> {
   const leadRepo = new PrismaLeadFactRepo();
-  
+
   // Fetch all leads handled by agent
   const leads = await leadRepo.listByAgent(orgId, agentUserId);
-  
+
   // Group by industry
   const byIndustry = new Map<string, any[]>();
   for (const lead of leads) {
@@ -63,44 +63,44 @@ export async function calculateAgentDomainProfile(
     }
     byIndustry.get(lead.industry)!.push(lead);
   }
-  
+
   // Calculate expertise per industry
   const domains = new Map<string, DomainExpertise>();
-  
+
   for (const [industry, industryLeads] of byIndustry.entries()) {
     const leadsHandled = industryLeads.length;
-    
+
     // Skip if below threshold (not enough data)
     if (leadsHandled < minLeadsThreshold) continue;
-    
+
     // Calculate metrics
     const leadsConverted = industryLeads.filter(l => l.closedWonAt).length;
     const conversionRate = leadsHandled > 0 ? leadsConverted / leadsHandled : 0;
-    
+
     const dealsWithAmount = industryLeads.filter(l => l.closedWonAt && l.dealAmount);
     const totalRevenue = dealsWithAmount.reduce((sum, l) => sum + (l.dealAmount || 0), 0);
     const avgDealSize = dealsWithAmount.length > 0 ? totalRevenue / dealsWithAmount.length : 0;
-    
+
     // Calculate expertise score (0-100)
     // Weighted formula:
     // - Conversion rate: 60% (most important - can they close?)
     // - Volume: 25% (experience matters - have they done this enough?)
     // - Deal size: 15% (quality of deals)
-    
+
     const conversionScore = conversionRate * 100;
-    
+
     // Volume score: normalize to 50 leads = perfect score
     const volumeScore = Math.min(leadsHandled / 50, 1) * 100;
-    
+
     // Deal size score: normalize to 100k = perfect score
     // But cap at 100 to avoid over-weighting very large deals
     const dealSizeScore = Math.min(avgDealSize / 100000, 1) * 100;
-    
-    const expertiseScore = 
-      conversionScore * 0.60 + 
-      volumeScore * 0.25 + 
+
+    const expertiseScore =
+      conversionScore * 0.60 +
+      volumeScore * 0.25 +
       dealSizeScore * 0.15;
-    
+
     // Confidence level based on sample size
     let confidence: "low" | "medium" | "high";
     if (leadsHandled < 10) {
@@ -110,7 +110,7 @@ export async function calculateAgentDomainProfile(
     } else {
       confidence = "high";
     }
-    
+
     domains.set(industry, {
       industry,
       leadsHandled,
@@ -123,7 +123,7 @@ export async function calculateAgentDomainProfile(
       lastUpdated: new Date(),
     });
   }
-  
+
   return {
     agentUserId,
     domains,
@@ -183,7 +183,7 @@ export function findBestAgentsByDomain(
   minScore: number = 50
 ): Array<{ agentUserId: string; expertiseScore: number; confidence: string }> {
   const matches: Array<{ agentUserId: string; expertiseScore: number; confidence: string }> = [];
-  
+
   for (const profile of agentProfiles) {
     const expertise = profile.domains.get(leadIndustry);
     if (expertise && expertise.expertiseScore >= minScore) {
@@ -194,10 +194,10 @@ export function findBestAgentsByDomain(
       });
     }
   }
-  
+
   // Sort by expertise score (highest first)
   matches.sort((a, b) => b.expertiseScore - a.expertiseScore);
-  
+
   return matches;
 }
 
@@ -216,7 +216,7 @@ export async function calculateBulkAgentProfiles(
   minLeadsThreshold: number = 5
 ): Promise<Map<string, AgentDomainProfile>> {
   const profiles = new Map<string, AgentDomainProfile>();
-  
+
   // Calculate in parallel for performance
   await Promise.all(
     agentUserIds.map(async (agentUserId) => {
@@ -228,7 +228,7 @@ export async function calculateBulkAgentProfiles(
       profiles.set(agentUserId, profile);
     })
   );
-  
+
   return profiles;
 }
 
@@ -238,14 +238,14 @@ export async function calculateBulkAgentProfiles(
  */
 export function getAgentDomainSummary(profile: AgentDomainProfile) {
   const domains = Array.from(profile.domains.values());
-  
+
   return {
     agentUserId: profile.agentUserId,
     totalDomains: domains.length,
     expertDomains: domains.filter(d => d.expertiseScore >= 70).length,
     proficientDomains: domains.filter(d => d.expertiseScore >= 50 && d.expertiseScore < 70).length,
     learningDomains: domains.filter(d => d.expertiseScore < 50).length,
-    topDomain: domains.length > 0 
+    topDomain: domains.length > 0
       ? domains.reduce((max, d) => d.expertiseScore > max.expertiseScore ? d : max)
       : null,
     avgExpertiseScore: domains.length > 0

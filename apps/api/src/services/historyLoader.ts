@@ -11,7 +11,7 @@ import { PrismaFieldMappingConfigRepo } from "../../../../packages/modules/field
 import { log } from "../../../../packages/core/src/shared/logger";
 import type { MondayItem } from "../../../../packages/modules/monday-integration/src/contracts/monday.types";
 
-const ORG_ID = "org_1";
+const ORG_ID = process.env.DEFAULT_ORG_ID || "cmjq2ces90000rbcw8s5iqlcz";
 
 interface LoadHistoryOptions {
   limitPerBoard?: number;

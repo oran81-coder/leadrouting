@@ -1,27 +1,38 @@
 import { getPrisma } from "../../../../packages/core/src/db/prisma";
 
-const ORG_ID = "org_1";
-
 export class PrismaLeadFactRepo {
-  async upsert(boardId: string, itemId: string, patch: any) {
+  async upsert(orgId: string, boardId: string, itemId: string, patch: any) {
     const prisma = getPrisma();
     return prisma.leadFact.upsert({
-      where: { orgId_boardId_itemId: { orgId: ORG_ID, boardId, itemId } },
+      where: { orgId_boardId_itemId: { orgId, boardId, itemId } },
       update: patch,
-      create: { orgId: ORG_ID, boardId, itemId, ...patch },
+      create: { orgId, boardId, itemId, ...patch },
     });
   }
 
-  async get(boardId: string, itemId: string) {
+  async get(orgId: string, boardId: string, itemId: string) {
     const prisma = getPrisma();
-    return prisma.leadFact.findUnique({ where: { orgId_boardId_itemId: { orgId: ORG_ID, boardId, itemId } } });
+    return prisma.leadFact.findUnique({ where: { orgId_boardId_itemId: { orgId, boardId, itemId } } });
   }
 
-  async listByAgentInWindow(agentUserId: string, since: Date) {
+  async create(data: any) {
+    const prisma = getPrisma();
+    return prisma.leadFact.create({ data });
+  }
+
+  async update(orgId: string, boardId: string, itemId: string, patch: any) {
+    const prisma = getPrisma();
+    return prisma.leadFact.update({
+      where: { orgId_boardId_itemId: { orgId, boardId, itemId } },
+      data: patch,
+    });
+  }
+
+  async listByAgentInWindow(orgId: string, agentUserId: string, since: Date) {
     const prisma = getPrisma();
     return prisma.leadFact.findMany({
       where: {
-        orgId: ORG_ID,
+        orgId: orgId,
         assignedUserId: agentUserId,
         OR: [
           { enteredAt: { gte: since } },
@@ -32,31 +43,31 @@ export class PrismaLeadFactRepo {
     });
   }
 
-  async listClosedWonSince(since: Date) {
+  async listClosedWonSince(orgId: string, since: Date) {
     const prisma = getPrisma();
     return prisma.leadFact.findMany({
       where: {
-        orgId: ORG_ID,
+        orgId: orgId,
         closedWonAt: { gte: since },
         assignedUserId: { not: null },
       },
     });
   }
 
-  async listSince(since: Date) {
+  async listSince(orgId: string, since: Date) {
     const prisma = getPrisma();
     return prisma.leadFact.findMany({
       where: {
-        orgId: ORG_ID,
+        orgId: orgId,
         enteredAt: { gte: since },
       },
     });
   }
 
-  async listAgentsWithFacts() {
+  async listAgentsWithFacts(orgId: string) {
     const prisma = getPrisma();
     const rows = await prisma.leadFact.findMany({
-      where: { orgId: ORG_ID, assignedUserId: { not: null } },
+      where: { orgId: orgId, assignedUserId: { not: null } },
       select: { assignedUserId: true },
       distinct: ["assignedUserId"],
     });
@@ -131,7 +142,7 @@ export class PrismaLeadFactRepo {
     excludedStatuses?: string[]
   ): Promise<number> {
     const prisma = getPrisma();
-    
+
     // Build list of statuses to exclude
     const excludedStatusList = [...closedWonStatuses];
     if (closedLostStatuses && closedLostStatuses.length > 0) {
@@ -140,7 +151,7 @@ export class PrismaLeadFactRepo {
     if (excludedStatuses && excludedStatuses.length > 0) {
       excludedStatusList.push(...excludedStatuses);
     }
-    
+
     return prisma.leadFact.count({
       where: {
         orgId,

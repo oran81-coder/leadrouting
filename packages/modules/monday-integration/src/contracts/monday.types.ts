@@ -49,6 +49,8 @@ export interface MondayItem {
   name?: string | null;
   /** Optional board id (sometimes not included in item queries). We add it when we know it. */
   boardId?: MondayBoardId;
+  created_at?: string;
+  updated_at?: string;
   column_values: MondayColumnValue[];
 }
 

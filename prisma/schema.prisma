@@ -189,6 +189,10 @@ model RoutingProposal {
   decidedBy     String?
   decisionNotes String?
 
+  // data updates (for re-scoring tracking)
+  dataUpdatedAt DateTime? // Last time lead data was updated and proposal re-scored
+  dataChanges   String?   // JSON string of changes that triggered re-scoring
+
   createdAt DateTime @default(now())
 
   // Relations
@@ -353,6 +357,7 @@ model LeadFact {
   orgId   String
   boardId String
   itemId  String
+  itemName String? // Name of the lead/item from Monday.com
 
   // Monday values (last seen)
   assignedUserId String?
@@ -442,6 +447,7 @@ model AgentProfile {
   
   // Speed Metrics
   avgResponseTime       Float?   // Seconds
+  avgTimeToClose        Float?   // Seconds
   
   // Capacity Metrics
   availability          Float    @default(1)    // 0-1 scale

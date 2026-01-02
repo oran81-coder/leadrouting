@@ -6,6 +6,210 @@ import {
   HistoricalPreviewLead,
 } from "./api";
 
+// --- Components ---
+
+const Tooltip = ({
+  children,
+  content,
+  isDark,
+}: {
+  children: React.ReactNode;
+  content: React.ReactNode;
+  isDark: boolean;
+}) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div
+      style={{ position: "relative", display: "inline-block", cursor: "help" }}
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children}
+      {isVisible && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "100%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            marginBottom: 8,
+            padding: 12,
+            background: isDark ? "#1e293b" : "#ffffff",
+            border: `1px solid ${isDark ? "#475569" : "#e2e8f0"}`,
+            borderRadius: 8,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            zIndex: 50,
+            width: "max-content",
+            maxWidth: 280,
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: isDark ? "#f1f5f9" : "#0f172a",
+          }}
+        >
+          {content}
+          <div
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: "50%",
+              transform: "translateX(-50%)",
+              borderLeft: "6px solid transparent",
+              borderRight: "6px solid transparent",
+              borderTop: `6px solid ${isDark ? "#475569" : "#e2e8f0"}`,
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ScoreBadge = ({
+  score,
+  breakdown,
+  isDark,
+}: {
+  score: number;
+  breakdown: Record<string, number>;
+  isDark: boolean;
+}) => {
+  // Determine color based on score
+  let bg, color;
+  if (score >= 80) {
+    bg = isDark ? "#10b98120" : "#d1fae5";
+    color = isDark ? "#34d399" : "#059669";
+  } else if (score >= 50) {
+    bg = isDark ? "#f59e0b20" : "#fef3c7";
+    color = isDark ? "#fbbf24" : "#d97706";
+  } else {
+    bg = isDark ? "#ef444420" : "#fee2e2";
+    color = isDark ? "#f87171" : "#dc2626";
+  }
+
+  const tooltipContent = (
+    <div>
+      <div style={{ fontWeight: 700, marginBottom: 8, borderBottom: `1px solid ${isDark ? "#334155" : "#e2e8f0"}`, paddingBottom: 4 }}>
+        Score Analysis ({score.toFixed(1)})
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {Object.entries(breakdown || {}).map(([key, val]) => (
+          <div key={key} style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
+            <span style={{ color: isDark ? "#94a3b8" : "#64748b", textTransform: 'capitalize' }}>
+              {key.replace(/([A-Z])/g, " $1").trim()}:
+            </span>
+            <span style={{ fontWeight: 600, color: val > 0 ? (isDark ? "#34d399" : "#059669") : (isDark ? "#94a3b8" : "#64748b") }}>
+              +{val.toFixed(1)}
+            </span>
+          </div>
+        ))}
+        {Object.keys(breakdown || {}).length === 0 && (
+          <span style={{ fontStyle: "italic", opacity: 0.7 }}>No breakdown available</span>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <Tooltip isDark={isDark} content={tooltipContent}>
+      <span
+        style={{
+          padding: "4px 12px",
+          borderRadius: 999,
+          fontSize: 13,
+          fontWeight: 700,
+          background: bg,
+          color: color,
+        }}
+      >
+        {score.toFixed(1)}
+      </span>
+    </Tooltip>
+  );
+};
+
+const ResultBadge = ({ lead, isDark }: { lead: HistoricalPreviewLead; isDark: boolean }) => {
+  const { wasClosedWon, assignedTo, recommendedTo, score } = lead;
+
+  // Logic for result type
+  let type: "win" | "missed" | "pending" | "neutral" = "pending";
+  let label = "Pending";
+  let description = "Lead outcome is not yet final.";
+  let icon = "⏳";
+  let bg = isDark ? "#334155" : "#f1f5f9";
+  let color = isDark ? "#94a3b8" : "#64748b";
+
+  const assignedId = assignedTo?.userId;
+  const recommendedId = recommendedTo?.userId;
+
+  if (wasClosedWon) {
+    if (assignedId && recommendedId && assignedId === recommendedId) {
+      type = "win";
+      label = "System Win";
+      description = "System correctly recommended the winning agent.";
+      icon = "🎯";
+      bg = isDark ? "#10b98120" : "#d1fae5";
+      color = isDark ? "#34d399" : "#059669";
+    } else if (assignedTo) {
+      // Won by someone else
+      // If system recommended someone else who had a very high score, maybe it's a "Mixed" result.
+      // For now, simple logic:
+      type = "neutral";
+      label = "Manual Win";
+      description = `Won by ${assignedTo.name}, though system suggested ${recommendedTo ? recommendedTo.name : 'someone else'}.`;
+      icon = "👤";
+      bg = isDark ? "#3b82f620" : "#dbeafe";
+      color = isDark ? "#60a5fa" : "#2563eb";
+    }
+  } else {
+    // Check if lost
+    // We don't have explicit "Lost" status bool, but we can look at logic. 
+    // If not closed won, we assume "Pending" unless we have status text indicating failure.
+    // Let's rely on status string heuristics or just default to Pending/Open.
+    const statusLower = (lead.status || "").toLowerCase();
+    const isLost = ["lost", "dead", "dq", "disqualified", "rejected"].some(s => statusLower.includes(s));
+
+    if (isLost) {
+      if (assignedId && recommendedId && assignedId !== recommendedId && score > 70) {
+        type = "missed";
+        label = "Missed Opp";
+        description = `System recommended ${recommendedTo?.name} (Score ${score.toFixed(0)}), who might have performed better.`;
+        icon = "📉";
+        bg = isDark ? "#ef444420" : "#fee2e2";
+        color = isDark ? "#f87171" : "#dc2626";
+      } else {
+        type = "neutral";
+        label = "Lost";
+        description = "Lead was lost.";
+        icon = "❌";
+        bg = isDark ? "#334155" : "#f1f5f9";
+        color = isDark ? "#94a3b8" : "#64748b";
+      }
+    }
+  }
+
+  return (
+    <Tooltip isDark={isDark} content={description}>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "4px 10px",
+          borderRadius: 6,
+          fontSize: 12,
+          fontWeight: 600,
+          background: bg,
+          color: color,
+        }}
+      >
+        <span>{icon}</span>
+        {label}
+      </span>
+    </Tooltip>
+  );
+};
+
 export function PreviewScreen() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -46,26 +250,26 @@ export function PreviewScreen() {
   // Get unique agents from recommendations
   const agents = data
     ? Array.from(
-        new Set(
-          data.leads
-            .map((l) => l.recommendedTo)
-            .filter((agent): agent is NonNullable<typeof agent> => agent !== null)
-            .map((agent) => JSON.stringify({ userId: agent.userId, name: agent.name }))
-        )
+      new Set(
+        data.leads
+          .map((l) => l.recommendedTo)
+          .filter((agent): agent is NonNullable<typeof agent> => agent !== null)
+          .map((agent) => JSON.stringify({ userId: agent.userId, name: agent.name }))
       )
-        .map((str) => JSON.parse(str))
-        .sort((a, b) => a.name.localeCompare(b.name))
+    )
+      .map((str) => JSON.parse(str))
+      .sort((a, b) => a.name.localeCompare(b.name))
     : [];
 
   // Apply filters
   const filteredLeads = data
     ? data.leads.filter((lead) => {
-        if (filterIndustry !== "all" && lead.industry !== filterIndustry) return false;
-        if (filterStatus === "closed_won" && !lead.wasClosedWon) return false;
-        if (filterStatus === "open" && lead.wasClosedWon) return false;
-        if (filterAgent !== "all" && lead.recommendedTo?.userId !== filterAgent) return false;
-        return true;
-      })
+      if (filterIndustry !== "all" && lead.industry !== filterIndustry) return false;
+      if (filterStatus === "closed_won" && !lead.wasClosedWon) return false;
+      if (filterStatus === "open" && lead.wasClosedWon) return false;
+      if (filterAgent !== "all" && lead.recommendedTo?.userId !== filterAgent) return false;
+      return true;
+    })
     : [];
 
   // Calculate filtered summary stats
@@ -204,8 +408,8 @@ export function PreviewScreen() {
                       ? "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)"
                       : "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)"
                     : isDark
-                    ? "#334155"
-                    : "#ffffff",
+                      ? "#334155"
+                      : "#ffffff",
                 color: windowDays === days ? "#ffffff" : isDark ? "#cbd5e1" : "#475569",
                 border: windowDays === days ? "none" : `1px solid ${isDark ? "#475569" : "#cbd5e1"}`,
                 borderRadius: 8,
@@ -391,23 +595,22 @@ export function PreviewScreen() {
             <div
               style={{
                 ...cardStyle,
-                borderLeft: `4px solid ${
-                  data.summary.improvement > 0
+                borderLeft: `4px solid ${data.summary.improvement > 0
                     ? isDark
                       ? "#10b981"
                       : "#059669"
                     : isDark
-                    ? "#ef4444"
-                    : "#dc2626"
-                }`,
+                      ? "#ef4444"
+                      : "#dc2626"
+                  }`,
                 background:
                   data.summary.improvement > 0
                     ? isDark
                       ? "linear-gradient(135deg, #1e293b 0%, #064e3b 100%)"
                       : "linear-gradient(135deg, #ffffff 0%, #ecfdf5 100%)"
                     : isDark
-                    ? "linear-gradient(135deg, #1e293b 0%, #7f1d1d 100%)"
-                    : "linear-gradient(135deg, #ffffff 0%, #fef2f2 100%)",
+                      ? "linear-gradient(135deg, #1e293b 0%, #7f1d1d 100%)"
+                      : "linear-gradient(135deg, #ffffff 0%, #fef2f2 100%)",
               }}
             >
               <div style={labelStyle}>Potential Improvement</div>
@@ -421,8 +624,8 @@ export function PreviewScreen() {
                         ? "#10b981"
                         : "#059669"
                       : isDark
-                      ? "#ef4444"
-                      : "#dc2626",
+                        ? "#ef4444"
+                        : "#dc2626",
                 }}
               >
                 {data.summary.improvement > 0 ? "+" : ""}
@@ -697,7 +900,7 @@ export function PreviewScreen() {
                   </p>
                 </div>
               </div>
-              
+
               <div
                 style={{
                   display: "grid",
@@ -986,8 +1189,8 @@ export function PreviewScreen() {
                               ? "#1e293b"
                               : "#ffffff"
                             : isDark
-                            ? "#0f172a"
-                            : "#f8fafc",
+                              ? "#0f172a"
+                              : "#f8fafc",
                         transition: "background 0.2s",
                       }}
                       onMouseEnter={(e) => {
@@ -1000,8 +1203,8 @@ export function PreviewScreen() {
                               ? "#1e293b"
                               : "#ffffff"
                             : isDark
-                            ? "#0f172a"
-                            : "#f8fafc";
+                              ? "#0f172a"
+                              : "#f8fafc";
                       }}
                     >
                       <td style={{ padding: "14px 18px", fontWeight: 600 }}>{lead.name}</td>
@@ -1035,15 +1238,15 @@ export function PreviewScreen() {
                                 ? "#10b98120"
                                 : "#d1fae5"
                               : isDark
-                              ? "#64748b20"
-                              : "#f1f5f9",
+                                ? "#64748b20"
+                                : "#f1f5f9",
                             color: lead.wasClosedWon
                               ? isDark
                                 ? "#34d399"
                                 : "#059669"
                               : isDark
-                              ? "#94a3b8"
-                              : "#64748b",
+                                ? "#94a3b8"
+                                : "#64748b",
                           }}
                         >
                           {lead.status}
@@ -1056,25 +1259,10 @@ export function PreviewScreen() {
                         {lead.recommendedTo ? lead.recommendedTo.name : <span style={{ color: isDark ? "#64748b" : "#94a3b8" }}>-</span>}
                       </td>
                       <td style={{ padding: "14px 18px", textAlign: "center" }}>
-                        <span
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 6,
-                            fontSize: 14,
-                            fontWeight: 700,
-                            background: isDark ? "#8b5cf620" : "#f5f3ff",
-                            color: isDark ? "#a78bfa" : "#7c3aed",
-                          }}
-                        >
-                          {lead.score.toFixed(1)}
-                        </span>
+                        <ScoreBadge score={lead.score} breakdown={lead.breakdown} isDark={isDark} />
                       </td>
                       <td style={{ padding: "14px 18px", textAlign: "center" }}>
-                        {lead.wasClosedWon ? (
-                          <span style={{ fontSize: 22 }}>✅</span>
-                        ) : (
-                          <span style={{ fontSize: 22, opacity: 0.3 }}>⏳</span>
-                        )}
+                        <ResultBadge lead={lead} isDark={isDark} />
                       </td>
                     </tr>
                   ))}
@@ -1112,4 +1300,3 @@ export function PreviewScreen() {
     </div>
   );
 }
-

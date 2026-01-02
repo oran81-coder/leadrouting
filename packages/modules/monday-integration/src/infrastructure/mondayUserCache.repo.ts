@@ -11,19 +11,19 @@ export class PrismaMondayUserCacheRepo {
       // Fetch all existing users in one query
       const userIds = users.map(u => String(u.id));
       const existing = await tx.mondayUserCache.findMany({
-        where: { 
-          orgId, 
-          userId: { in: userIds } 
+        where: {
+          orgId,
+          userId: { in: userIds }
         },
         select: { userId: true }
       });
-      
+
       const existingSet = new Set(existing.map(e => e.userId));
-      
+
       // Separate into updates and creates
       const toUpdate = users.filter(u => existingSet.has(String(u.id)));
       const toCreate = users.filter(u => !existingSet.has(String(u.id)));
-      
+
       // Batch update using updateMany (one query per user, but in transaction)
       for (const u of toUpdate) {
         await tx.mondayUserCache.updateMany({
@@ -31,7 +31,7 @@ export class PrismaMondayUserCacheRepo {
           data: { name: u.name ?? "", email: u.email ?? "" }
         });
       }
-      
+
       // Batch create using createMany (single query for all creates)
       // Note: SQLite doesn't support skipDuplicates in createMany, but since we
       // pre-filtered for non-existing users, this should be safe
@@ -59,6 +59,20 @@ export class PrismaMondayUserCacheRepo {
     }));
   }
 
+  async getByUserId(orgId: string, userId: string): Promise<MondayUserCached | null> {
+    const prisma = getPrisma();
+    const row = await prisma.mondayUserCache.findUnique({
+      where: { orgId_userId: { orgId, userId } }
+    });
+    if (!row) return null;
+    return {
+      userId: row.userId,
+      name: row.name,
+      email: row.email,
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
   async findByEmail(orgId: string, email: string): Promise<MondayUserCached[]> {
     const prisma = getPrisma();
     const rows = await prisma.mondayUserCache.findMany({ where: { orgId, email: email } });
@@ -75,8 +89,8 @@ export class PrismaMondayUserCacheRepo {
     // Optimized: Use contains to narrow down candidates, then filter in-memory
     // This is significantly better than loading all 500 users
     // SQLite doesn't support native case-insensitive equals in Prisma
-    const rows = await prisma.mondayUserCache.findMany({ 
-      where: { 
+    const rows = await prisma.mondayUserCache.findMany({
+      where: {
         orgId,
         // Use contains to pre-filter candidates (still case-sensitive in SQLite)
         name: {
@@ -85,10 +99,10 @@ export class PrismaMondayUserCacheRepo {
       },
       take: 100 // Limit to prevent over-fetching
     });
-    
+
     // Final case-insensitive filter in-memory (small dataset after DB filter)
     const filtered = rows.filter((r) => (r.name ?? "").toLowerCase() === nameLower.toLowerCase());
-    
+
     return filtered.map((r) => ({
       userId: r.userId,
       name: r.name,

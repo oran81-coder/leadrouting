@@ -40,7 +40,7 @@ export const DEFAULT_KPI_WEIGHTS: KPIWeights = {
  */
 export function validateWeights(weights: KPIWeights): { valid: boolean; total: number; error?: string } {
   const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
-  
+
   // Allow small variance (±2%) for rounding
   if (total < 98 || total > 102) {
     return {
@@ -49,7 +49,7 @@ export function validateWeights(weights: KPIWeights): { valid: boolean; total: n
       error: `Weights must sum to 100 (current: ${total})`,
     };
   }
-  
+
   return { valid: true, total };
 }
 
@@ -61,7 +61,7 @@ export function validateWeights(weights: KPIWeights): { valid: boolean; total: n
 export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): ScoringRule[] {
   const now = new Date();
   const rules: ScoringRule[] = [];
-  
+
   // Rule 1: Workload / Availability
   if (weights.workload > 0) {
     rules.push({
@@ -86,7 +86,7 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       updatedAt: now,
     });
   }
-  
+
   // Rule 2: Conversion Rate - Historical
   if (weights.conversionHistorical > 0) {
     rules.push({
@@ -111,7 +111,7 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       updatedAt: now,
     });
   }
-  
+
   // Rule 3: Recent Performance
   // Note: For Phase 1, we'll use same as historical. Phase 2 can add time-windowed metrics.
   if (weights.recentPerformance > 0) {
@@ -137,7 +137,7 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       updatedAt: now,
     });
   }
-  
+
   // Rule 4: Response Time
   if (weights.responseTime > 0) {
     rules.push({
@@ -154,7 +154,7 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
         value: 0,
       },
       matchScoreCalculation: {
-        type: "ratio",
+        type: "inverse_ratio",
         ratioField: "agent.avgResponseTime",
         ratioMax: 86400, // 24 hours in seconds (lower is better, so we invert)
       },
@@ -163,7 +163,7 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       updatedAt: now,
     });
   }
-  
+
   // Rule 5: Average Time to Close
   // Similar to response time - lower is better
   if (weights.avgTimeToClose > 0) {
@@ -176,20 +176,21 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       category: "performance",
       condition: {
         type: "simple",
-        field: "agent.totalLeadsConverted",
+        field: "agent.totalLeadsConverted", // keep checking if they have converted leads
         operator: "greaterThan",
         value: 0,
       },
       matchScoreCalculation: {
-        type: "fixed",
-        fixedValue: 0.5, // Placeholder - Phase 2 can add actual metric
+        type: "inverse_ratio",
+        ratioField: "agent.avgTimeToClose",
+        ratioMax: 2592000, // 30 days in seconds
       },
       version: 1,
       createdAt: now,
       updatedAt: now,
     });
   }
-  
+
   // Rule 6: Average Deal Size
   if (weights.avgDealSize > 0) {
     rules.push({
@@ -215,7 +216,7 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       updatedAt: now,
     });
   }
-  
+
   // Rule 7: Industry Match
   if (weights.industryMatch > 0) {
     rules.push({
@@ -240,7 +241,7 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       updatedAt: now,
     });
   }
-  
+
   // Rule 8: Hot Streak
   if (weights.hotStreak > 0) {
     rules.push({
@@ -266,7 +267,7 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       updatedAt: now,
     });
   }
-  
+
   return rules.filter(r => r.enabled);
 }
 
@@ -275,15 +276,15 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
  */
 export function normalizeWeights(weights: KPIWeights): KPIWeights {
   const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
-  
+
   if (total === 0) {
     return DEFAULT_KPI_WEIGHTS;
   }
-  
+
   if (Math.abs(total - 100) < 0.01) {
     return weights; // Already normalized
   }
-  
+
   // Scale all weights proportionally
   const factor = 100 / total;
   return {
@@ -303,14 +304,34 @@ export function normalizeWeights(weights: KPIWeights): KPIWeights {
  * Returns default if not configured
  */
 export function extractKPIWeightsFromMetricsConfig(config: any): KPIWeights {
-  if (!config || !config.kpiWeights) {
-    return DEFAULT_KPI_WEIGHTS;
+  // 1. Try to read from JSON field (legacy/override)
+  if (config?.kpiWeights) {
+    // If it's a string (from DB), parse it
+    const parsed = typeof config.kpiWeights === 'string'
+      ? JSON.parse(config.kpiWeights)
+      : config.kpiWeights;
+
+    return {
+      ...DEFAULT_KPI_WEIGHTS,
+      ...parsed,
+    };
   }
-  
-  // Merge with defaults to handle missing keys
-  return {
-    ...DEFAULT_KPI_WEIGHTS,
-    ...config.kpiWeights,
-  };
+
+  // 2. Try to read from individual columns (Phase 2)
+  if (config && typeof config.weightDomainExpertise === 'number') {
+    return {
+      workload: config.weightAvailability ?? DEFAULT_KPI_WEIGHTS.workload,
+      conversionHistorical: config.weightConversionHistorical ?? DEFAULT_KPI_WEIGHTS.conversionHistorical,
+      recentPerformance: config.weightRecentPerformance ?? DEFAULT_KPI_WEIGHTS.recentPerformance,
+      responseTime: config.weightResponseTime ?? DEFAULT_KPI_WEIGHTS.responseTime,
+      avgTimeToClose: config.weightAvgTimeToClose ?? DEFAULT_KPI_WEIGHTS.avgTimeToClose,
+      avgDealSize: config.weightAvgDealSize ?? DEFAULT_KPI_WEIGHTS.avgDealSize,
+      industryMatch: config.weightDomainExpertise ?? DEFAULT_KPI_WEIGHTS.industryMatch, // Mapping: domainExpertise -> industryMatch
+      hotStreak: config.weightHotAgent ?? DEFAULT_KPI_WEIGHTS.hotStreak, // Mapping: hotAgent -> hotStreak
+    };
+  }
+
+  // 3. Fallback to defaults
+  return DEFAULT_KPI_WEIGHTS;
 }
 

@@ -4,6 +4,6 @@ import { PrismaMondayCredentialRepo } from "../infrastructure/mondayCredential.r
 export async function createMondayClientForOrg(orgId: string) {
   const repo = new PrismaMondayCredentialRepo();
   const cred = await repo.get(orgId);
-  if (!cred) throw new Error("Monday not connected (missing credentials)");
+  if (!cred) return null; // Return null instead of throwing error
   return createMondayClient({ token: cred.token, endpoint: cred.endpoint });
 }

@@ -39,9 +39,9 @@ export function ManagerScreen() {
   const [mondayUsers, setMondayUsers] = useState<MondayUser[]>([]);
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [overrideProposal, setOverrideProposal] = useState<ManagerProposalDTO | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(30); // seconds
-  const [countdown, setCountdown] = useState(30);
+  const [autoRefresh, setAutoRefresh] = useState(true); // Auto-refresh enabled by default
+  const [refreshInterval, setRefreshInterval] = useState(120); // 120 seconds to match backend poller
+  const [countdown, setCountdown] = useState(120);
 
   async function fetchProposals() {
     setLoading(true);
@@ -110,10 +110,10 @@ export function ManagerScreen() {
   async function handleApprove(id: string) {
     // Optimistic update - update UI immediately
     const previousProposals = [...proposals];
-    setProposals(prev => prev.map(p => 
+    setProposals(prev => prev.map(p =>
       p.id === id ? { ...p, status: "APPROVED" as const } : p
     ));
-    
+
     try {
       await approve(id);
       showToast("Proposal approved successfully", "success");
@@ -129,10 +129,10 @@ export function ManagerScreen() {
   async function handleReject(id: string) {
     // Optimistic update - update UI immediately
     const previousProposals = [...proposals];
-    setProposals(prev => prev.map(p => 
+    setProposals(prev => prev.map(p =>
       p.id === id ? { ...p, status: "REJECTED" as const } : p
     ));
-    
+
     try {
       await reject(id);
       showToast("Proposal rejected", "success");
@@ -169,9 +169,9 @@ export function ManagerScreen() {
       message: `Approve all ${statusFilter || "ALL"} proposals? This action cannot be undone.`,
       confirmText: "Approve All",
     });
-    
+
     if (!confirmed) return;
-    
+
     try {
       setLoading(true);
       await approveAllFiltered({ status: statusFilter || undefined });
@@ -186,15 +186,15 @@ export function ManagerScreen() {
 
   async function handleBulkApprove() {
     if (bulkSelected.size === 0) return;
-    
+
     const confirmed = await confirm({
       title: "Approve Selected Proposals",
       message: `Approve ${bulkSelected.size} selected proposals? This action cannot be undone.`,
       confirmText: "Approve Selected",
     });
-    
+
     if (!confirmed) return;
-    
+
     setLoading(true);
     try {
       const count = bulkSelected.size;
@@ -213,16 +213,16 @@ export function ManagerScreen() {
 
   async function handleBulkReject() {
     if (bulkSelected.size === 0) return;
-    
+
     const confirmed = await confirm({
       title: "Reject Selected Proposals",
       message: `Reject ${bulkSelected.size} selected proposals? This action cannot be undone.`,
       confirmText: "Reject Selected",
       isDanger: true,
     });
-    
+
     if (!confirmed) return;
-    
+
     setLoading(true);
     try {
       const count = bulkSelected.size;
@@ -261,7 +261,7 @@ export function ManagerScreen() {
   const filteredProposals = proposals.filter((p) => {
     // Status filter
     if (statusFilter && p.status !== statusFilter) return false;
-    
+
     // Search filter
     if (!debouncedSearchQuery) return true;
     const search = debouncedSearchQuery.toLowerCase();
@@ -431,11 +431,10 @@ export function ManagerScreen() {
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
             aria-label="Toggle auto-refresh"
-            className={`px-4 py-2 rounded-lg font-medium border transition-colors ${
-              autoRefresh
+            className={`px-4 py-2 rounded-lg font-medium border transition-colors ${autoRefresh
                 ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
                 : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            }`}
+              }`}
           >
             {autoRefresh ? (
               <span className="flex items-center gap-2">
@@ -600,8 +599,15 @@ export function ManagerScreen() {
                         onClick={() => setSelectedProposal(proposal)}
                         className="text-sm text-blue-600 dark:text-blue-400 hover:underline text-left"
                       >
-                        <div className="font-medium">
+                        <div className="font-medium flex items-center gap-2">
                           {proposal.itemName || `Item ${proposal.itemId}`}
+                          {proposal.wasRescored && (
+                            <Tooltip content={`Data updated on ${new Date(proposal.dataUpdatedAt!).toLocaleString()}`}>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
+                                📊 Updated
+                              </span>
+                            </Tooltip>
+                          )}
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">
                           {proposal.boardId}:{proposal.itemId}
@@ -616,15 +622,14 @@ export function ManagerScreen() {
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          proposal.status === "PENDING" || proposal.status === "PROPOSED"
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${proposal.status === "PENDING" || proposal.status === "PROPOSED"
                             ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
                             : proposal.status === "APPROVED"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                            : proposal.status === "REJECTED"
-                            ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                            : "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
-                        }`}
+                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                              : proposal.status === "REJECTED"
+                                ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                : "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+                          }`}
                       >
                         {proposal.status}
                       </span>

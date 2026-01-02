@@ -15,7 +15,7 @@ const getScoreLevel = (score: number, metric: 'conversion' | 'burnout' | 'availa
     if (score <= 60) return { label: 'Good', color: 'yellow', bg: 'bg-yellow-50', text: 'text-yellow-700', bar: 'bg-yellow-500' };
     return { label: 'Needs Attention', color: 'red', bg: 'bg-red-50', text: 'text-red-700', bar: 'bg-red-600' };
   }
-  
+
   // For other metrics, higher is better
   if (score >= 70) return { label: 'Excellent', color: 'green', bg: 'bg-green-50', text: 'text-green-700', bar: 'bg-green-600' };
   if (score >= 40) return { label: 'Good', color: 'yellow', bg: 'bg-yellow-50', text: 'text-yellow-700', bar: 'bg-yellow-500' };
@@ -35,7 +35,7 @@ export function AgentDetailModal({ agent, windowDays, onClose }: AgentDetailModa
   const conversionPercent = agent.conversionRate * 100;
   const availabilityPercent = (agent.availability ?? 0) * 100;
   const burnoutScore = agent.burnoutScore ?? 0;
-  
+
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
@@ -133,7 +133,7 @@ export function AgentDetailModal({ agent, windowDays, onClose }: AgentDetailModa
               <div className="bg-teal-50 dark:bg-gray-700 rounded-lg p-4 border-l-4 border-teal-600">
                 <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Time to Close</div>
                 <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                  {agent.medianTimeToCloseDays !== null ? `${agent.medianTimeToCloseDays}d` : "N/A"}
+                  {agent.medianTimeToCloseDays !== null ? `${agent.medianTimeToCloseDays.toFixed(1)}d` : "N/A"}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
                   Median cycle time

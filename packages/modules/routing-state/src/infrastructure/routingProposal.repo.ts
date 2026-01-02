@@ -59,7 +59,6 @@ export class PrismaRoutingProposalRepo {
         status: "PROPOSED" as any,
       },
       create: {
-        orgId: args.orgId,
         idempotencyKey: args.idempotencyKey,
         boardId: args.boardId,
         itemId: args.itemId,
@@ -69,6 +68,9 @@ export class PrismaRoutingProposalRepo {
         action: args.action ? JSON.stringify(args.action) : null,
         explainability: args.explainability ? JSON.stringify(args.explainability) : null,
         status: "PROPOSED" as any,
+        organization: {
+          connect: { id: args.orgId }
+        }
       },
     });
     return row as any;

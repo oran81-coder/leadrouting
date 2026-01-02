@@ -58,6 +58,8 @@ export async function buildPreviewWithClient(
   const boardIds = collectReferencedBoardIds(schema, config);
   const limit = opts?.limitPerBoard ?? 5;
 
+  // Fix: Don't use created_at sorting as it causes "Column not found" error
+  // Monday.com doesn't support sorting by created_at in column_values context
   const samples = await client.fetchBoardSamples(boardIds, limit);
   return buildPreviewFromSamples(schema, config, samples);
 }

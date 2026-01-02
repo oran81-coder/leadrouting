@@ -15,7 +15,7 @@ const capacityRepo = new PrismaCapacitySettingsRepo();
 const capacityCalculator = new CapacityCalculatorService();
 
 // For now, hardcoded orgId (will be from auth later)
-const ORG_ID = "org_1";
+const ORG_ID = process.env.DEFAULT_ORG_ID || "cmjq2ces90000rbcw8s5iqlcz";
 
 /**
  * GET /availability/agents

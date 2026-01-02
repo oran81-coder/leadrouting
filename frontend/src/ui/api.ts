@@ -12,6 +12,20 @@ export type ManagerProposalDTO = {
   matchScore: number | null; // Match score from explainability
   normalizedValues: unknown;
   explains: unknown;
+
+  // Decision metadata (Phase 1.8)
+  decidedBy?: string | null;
+  decidedAt?: string | null;
+  decisionNotes?: string | null;
+
+  // Applied metadata
+  appliedAt?: string | null;
+  appliedAssigneeRaw?: string | null;
+
+  // Data updates (for re-scoring tracking - Phase 1.9)
+  dataUpdatedAt?: string | null;
+  dataChanges?: unknown;
+  wasRescored?: boolean;
 };
 
 
@@ -49,7 +63,7 @@ function getAuthToken(): string | null {
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
   const token = getAuthToken();
-  
+
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
@@ -118,10 +132,10 @@ export async function approveAllFiltered(status: string, maxTotal = 200): Promis
 export function getApiKey(): string {
   // For development: use default API key if none is set
   const DEFAULT_DEV_API_KEY = 'dev_key_123';
-  
+
   // Check if API key is in localStorage
   const storedKey = localStorage.getItem('apiKey');
-  
+
   // If no key stored, use development default (localhost only)
   if (!storedKey || storedKey.trim() === '') {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -130,7 +144,7 @@ export function getApiKey(): string {
       return DEFAULT_DEV_API_KEY;
     }
   }
-  
+
   return (storedKey || '').trim();
 }
 
@@ -229,17 +243,17 @@ export type MondayColumnDTO = { id: string; title: string; type: string; setting
 export type MondayStatusLabelDTO = { key: string; label: string };
 
 export async function listMondayBoards(): Promise<MondayBoardDTO[]> {
-  const json = await http<{ ok: boolean; boards: MondayBoardDTO[] }>("/monday/boards", { method: "GET" });
+  const json = await http<{ ok: boolean; boards: MondayBoardDTO[] }>("/admin/monday/boards", { method: "GET" });
   return json.boards;
 }
 
 export async function listMondayBoardColumns(boardId: string): Promise<MondayColumnDTO[]> {
-  const json = await http<{ ok: boolean; columns: MondayColumnDTO[] }>(`/monday/boards/${boardId}/columns`, { method: "GET" });
+  const json = await http<{ ok: boolean; columns: MondayColumnDTO[] }>(`/admin/monday/boards/${boardId}/columns`, { method: "GET" });
   return json.columns;
 }
 
 export async function listMondayStatusLabels(boardId: string, columnId: string): Promise<MondayStatusLabelDTO[]> {
-  const json = await http<{ ok: boolean; labels: MondayStatusLabelDTO[] }>(`/monday/boards/${boardId}/status/${columnId}/labels`, { method: "GET" });
+  const json = await http<{ ok: boolean; labels: MondayStatusLabelDTO[] }>(`/admin/monday/boards/${boardId}/status/${columnId}/labels`, { method: "GET" });
   return json.labels || [];
 }
 
@@ -324,7 +338,7 @@ export type OutcomesPerAgentDTO = {
   revenue: number | null;
   avgDeal: number | null;
   medianTimeToCloseDays: number | null;
-  
+
   // Additional metrics from Agent Profile
   avgResponseTime: number | null; // Seconds
   availability: number | null; // 0-1 scale
@@ -421,8 +435,16 @@ export async function saveMappingConfig(config: FieldMappingConfig): Promise<{ v
   return { version: data.version };
 }
 
+export async function saveInternalSchema(schema: { version: number; updatedAt: string; fields: any[] }): Promise<{ version: number }> {
+  const data = await http<{ ok: boolean; version: number }>(`/admin/schema`, {
+    method: "POST",
+    body: JSON.stringify(schema),
+  });
+  return { version: data.version };
+}
+
 export async function getMappingBoards(): Promise<MondayBoardDTO[]> {
-  const data = await http<{ ok: boolean; boards: MondayBoardDTO[] }>(`/monday/boards`);
+  const data = await http<{ ok: boolean; boards: MondayBoardDTO[] }>(`/admin/monday/boards`);
   return data.boards || [];
 }
 

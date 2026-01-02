@@ -2,7 +2,7 @@ import { optionalEnv } from "../config/env";
 import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/application/monday.orgClient";
 import { PrismaIndustryWatchRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/industryWatch.repo";
 
-const ORG_ID = "org_1";
+const ORG_ID = process.env.DEFAULT_ORG_ID || "cmjq2ces90000rbcw8s5iqlcz";
 
 function numEnv(name: string, def: number) {
   const v = optionalEnv(name, "");

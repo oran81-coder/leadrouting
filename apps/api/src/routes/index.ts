@@ -29,7 +29,11 @@ import { requireMondayConnected } from "../middleware/requireMondayConnected";
 import { fieldMappingRoutes } from "../../../../packages/modules/field-mapping/src/api/mapping.routes";
 
 export function registerRoutes(app: Express) {
-  const ORG_ID = "org_1";
+  const ORG_ID = process.env.DEFAULT_ORG_ID || "cmjt563ps000037hg6i4dvl7m";
+
+  // Phase 7.3: Mount organization context globally
+  const { orgContextMiddleware } = require("../middleware/orgContext");
+  app.use(orgContextMiddleware);
 
   console.log("[registerRoutes] loaded. ORG_ID =", ORG_ID);
 
@@ -46,7 +50,7 @@ export function registerRoutes(app: Express) {
   // Organization management (Admin/Super Admin only)
   app.use("/organizations", requireApiKey, organizationRoutes);
   app.use("/org-settings", requireApiKey, organizationSettingsRoutes); // Organization settings (admin-only, auth required)
-  
+
   // Admin routes (protected by API key, auth optional based on AUTH_ENABLED flag)
   app.use("/admin", requireApiKey, adminRoutes());
   console.log("[registerRoutes] mounted /admin");
