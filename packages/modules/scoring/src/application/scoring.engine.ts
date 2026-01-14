@@ -21,19 +21,19 @@ import { evaluateRulesForAgents } from "../../../rule-engine/src/application/rul
 export interface AgentScore {
   agentUserId: string;
   agentName?: string;
-  
+
   // Scoring
   totalScore: number;          // Sum of all rule contributions (0-100 scale)
   normalizedScore: number;     // Scaled to 0-100
   rank: number;                // 1 = best match
-  
+
   // Rule breakdown
   ruleContributions: AgentRuleEvaluation;
-  
+
   // Tie-breaking info
   tieBreakUsed: boolean;
   tieBreakReason?: string;
-  
+
   // Gating
   eligible: boolean;
   ineligibleReason?: string;
@@ -45,14 +45,14 @@ export interface AgentScore {
 export interface ScoringResult {
   leadId: string;
   leadName?: string;
-  
+
   // Scores
   scores: AgentScore[];
-  
+
   // Winner
   recommendedAgent: AgentScore | null;
   alternativeAgents: AgentScore[];  // Top 3 alternatives
-  
+
   // Metadata
   totalAgentsEvaluated: number;
   eligibleAgents: number;
@@ -87,26 +87,26 @@ export function applyGatingFilters(
   filters: GatingFilters = {}
 ): Array<{ agent: AgentProfile; ineligibleReason?: string }> {
   const cfg = { ...DEFAULT_GATING, ...filters };
-  
+
   return agents.map(agent => {
     // Check basic eligibility (from agent profiling)
     const basicEligibility = isAgentEligible(agent);
     if (!basicEligibility.eligible) {
       return { agent, ineligibleReason: basicEligibility.reason };
     }
-    
+
     // Check availability requirement
     if (cfg.requireAvailability && agent.availability <= 0) {
       return { agent, ineligibleReason: "No availability" };
     }
-    
+
     // Check minimum conversion rate
     if (cfg.requireMinConversionRate !== undefined) {
       if (agent.conversionRate === null || agent.conversionRate < cfg.requireMinConversionRate) {
         return { agent, ineligibleReason: `Conversion rate below minimum (${cfg.requireMinConversionRate})` };
       }
     }
-    
+
     // Check industry expertise
     if (cfg.requireMinIndustryScore !== undefined && lead.industry) {
       const industryScore = agent.industryScores[lead.industry];
@@ -114,12 +114,12 @@ export function applyGatingFilters(
         return { agent, ineligibleReason: `Industry expertise below minimum for ${lead.industry}` };
       }
     }
-    
+
     // Check burnout
     if (cfg.excludeHighBurnout && agent.burnoutScore > (cfg.maxBurnoutScore ?? 90)) {
       return { agent, ineligibleReason: `High burnout score (${agent.burnoutScore})` };
     }
-    
+
     // Agent passed all filters
     return { agent };
   });
@@ -127,13 +127,33 @@ export function applyGatingFilters(
 
 /**
  * Normalize scores to 0-100 scale
+ * 
+ * FIXED: Only normalize when necessary to preserve score differentiation.
+ * Previously, if all agents had similar scores (e.g., all 40), they would
+ * all be normalized to 100/100, losing all differentiation.
+ * 
+ * New behavior:
+ * - If max score is already <= 100, keep raw scores (preserve differences)
+ * - If max score > 100, scale down proportionally to fit 0-100 range
+ * - This ensures agents with different raw scores show different final scores
  */
 function normalizeScores(scores: number[]): number[] {
   if (scores.length === 0) return [];
-  
+
   const maxScore = Math.max(...scores);
+  const minScore = Math.min(...scores);
+
+  // If all scores are zero, return zeros
   if (maxScore === 0) return scores.map(() => 0);
-  
+
+  // If max score is already within 0-100 range, keep raw scores
+  // This preserves the actual differences between agents
+  if (maxScore <= SCORE.MAX) {
+    return scores;
+  }
+
+  // Only normalize if scores exceed 100
+  // Scale down proportionally to fit in 0-100 range
   return scores.map(score => (score / maxScore) * SCORE.MAX);
 }
 
@@ -147,16 +167,16 @@ function resolveTie(
 ): number {
   const agent1 = agents.get(score1.agentUserId);
   const agent2 = agents.get(score2.agentUserId);
-  
+
   if (!agent1 || !agent2) return 0;
-  
+
   const comparison = compareAgents(agent1, agent2);
-  
+
   if (comparison !== 0) {
     // Record tie-break reason
     const winner = comparison < 0 ? score1 : score2;
     winner.tieBreakUsed = true;
-    
+
     if (agent1.availability !== agent2.availability) {
       winner.tieBreakReason = "Higher availability";
     } else if (agent1.currentActiveLeads !== agent2.currentActiveLeads) {
@@ -167,7 +187,7 @@ function resolveTie(
       winner.tieBreakReason = "Hot streak active";
     }
   }
-  
+
   return comparison;
 }
 
@@ -181,18 +201,18 @@ export function computeScores(
   gatingFilters?: GatingFilters
 ): ScoringResult {
   const startTime = Date.now();
-  
+
   // Apply gating filters
   const filtered = applyGatingFilters(agents, lead, gatingFilters);
   const eligibleAgents = filtered.filter(f => !f.ineligibleReason).map(f => f.agent);
   const ineligibleAgents = filtered.filter(f => f.ineligibleReason);
-  
+
   // Evaluate rules for eligible agents
   const evaluations = evaluateRulesForAgents(lead, eligibleAgents, rules);
-  
+
   // Create agent map for tie-breaking
   const agentMap = new Map(agents.map(a => [a.agentUserId, a]));
-  
+
   // Build scores
   let scores: AgentScore[] = evaluations.map(agentEval => ({
     agentUserId: agentEval.agentUserId,
@@ -204,7 +224,7 @@ export function computeScores(
     tieBreakUsed: false,
     eligible: true,
   }));
-  
+
   // Add ineligible agents (score = 0)
   scores = scores.concat(
     ineligibleAgents.map(({ agent, ineligibleReason }) => ({
@@ -225,7 +245,7 @@ export function computeScores(
       ineligibleReason,
     }))
   );
-  
+
   // Normalize scores
   const rawScores = scores.filter(s => s.eligible).map(s => s.totalScore);
   const normalizedValues = normalizeScores(rawScores);
@@ -235,43 +255,43 @@ export function computeScores(
       score.normalizedScore = normalizedValues[normalizedIndex++];
     }
   }
-  
+
   // Sort by score (with tie-breaking)
   scores.sort((a, b) => {
     // Ineligible agents always last
     if (!a.eligible && b.eligible) return 1;
     if (a.eligible && !b.eligible) return -1;
     if (!a.eligible && !b.eligible) return 0;
-    
+
     // Compare normalized scores
     if (Math.abs(a.normalizedScore - b.normalizedScore) > SCORE.EPSILON) {
       return b.normalizedScore - a.normalizedScore;
     }
-    
+
     // Tie-breaking
     return resolveTie(a, b, agentMap);
   });
-  
+
   // Assign ranks
   scores.forEach((score, index) => {
     score.rank = index + 1;
   });
-  
+
   // Determine recommended agent (rank 1)
   const recommendedAgent = scores.length > 0 && scores[0].eligible ? scores[0] : null;
-  
+
   // Get alternatives (ranks 2-4)
   const alternativeAgents = scores
     .filter((s, i) => i > 0 && i <= RANK.MAX_ALTERNATIVES && s.eligible)
     .slice(0, RANK.MAX_ALTERNATIVES);
-  
+
   // Count rules applied
   const rulesApplied = recommendedAgent
     ? recommendedAgent.ruleContributions.rulesApplied
     : 0;
-  
+
   console.log(`[ScoringEngine] Computed scores in ${Date.now() - startTime}ms`);
-  
+
   return {
     leadId: lead.leadId,
     leadName: lead.leadName,
@@ -299,11 +319,11 @@ export function getScoreSummary(score: AgentScore): {
     .sort((a, b) => b.contribution - a.contribution)
     .slice(0, 3)
     .map(r => `${r.ruleName}: ${r.contribution.toFixed(1)}pts`);
-  
+
   let confidence: "high" | "medium" | "low" = "medium";
   if (score.normalizedScore >= CONFIDENCE.HIGH_THRESHOLD) confidence = "high";
   if (score.normalizedScore < CONFIDENCE.MEDIUM_THRESHOLD) confidence = "low";
-  
+
   return {
     score: `${score.normalizedScore.toFixed(1)}/100`,
     rank: `#${score.rank}`,
@@ -318,10 +338,10 @@ export function getScoreSummary(score: AgentScore): {
  */
 export function selectRandomFallback(agents: AgentProfile[]): AgentScore | null {
   if (agents.length === 0) return null;
-  
+
   const randomIndex = Math.floor(Math.random() * agents.length);
   const agent = agents[randomIndex];
-  
+
   return {
     agentUserId: agent.agentUserId,
     agentName: agent.agentName,

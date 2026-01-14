@@ -89,7 +89,7 @@ const DEFAULT_CONFIG: AgentProfilerConfig = {
   burnoutWinDecayHours: 336,
   burnoutActivityDecayHours: 168,
   dailyLeadThreshold: 20,
-  minLeadsForDomain: 5,
+  minLeadsForDomain: 1,
 };
 
 /**

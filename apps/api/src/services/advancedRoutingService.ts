@@ -72,9 +72,9 @@ function convertToNormalizedLead(
   return {
     leadId: itemId || `lead_${Date.now()}`,
     leadName: itemName || values.name || undefined,
-    industry: values.industry || undefined,
-    dealSize: values.dealSize ? Number(values.dealSize) : undefined,
-    source: values.source || undefined,
+    industry: values.industry || values.lead_industry || undefined,
+    dealSize: values.dealSize ? Number(values.dealSize) : values.lead_deal_size ? Number(values.lead_deal_size) : undefined,
+    source: values.source || values.lead_source || undefined,
     createdAt: values.createdAt ? new Date(values.createdAt) : undefined,
     ...values, // Include all other fields
   };
@@ -320,9 +320,11 @@ export function formatExplainabilityForStorage(explanation?: RoutingExplanation)
   if (!explanation) return null;
 
   // Extract KPI scores from breakdown for easy UI consumption
-  const kpiScores: Record<string, number> = {};
+  const kpiScores: Record<string, number> = {
+    ...(explanation.breakdown as any).allKpiScores || {}
+  };
 
-  // Combine primaryReasons and secondaryFactors
+  // Combine primaryReasons and secondaryFactors for backward compatibility or extra rule info
   const allReasons = [
     ...(explanation.breakdown.primaryReasons || []),
     ...(explanation.breakdown.secondaryFactors || []),
@@ -330,10 +332,16 @@ export function formatExplainabilityForStorage(explanation?: RoutingExplanation)
 
   for (const reason of allReasons) {
     if (reason.category && reason.matchScore !== undefined) {
-      // Map category to friendly KPI name
       const categoryKey = reason.category;
-      // Use matchScore (0-1) converted to 0-100 scale for metric score
-      kpiScores[categoryKey] = Math.round(reason.matchScore * 100);
+      // If not already in kpiScores, add it
+      if (kpiScores[categoryKey] === undefined) {
+        kpiScores[categoryKey] = Math.round(reason.matchScore * 100);
+      }
+
+      // Also map by ruleId if available (for precise UI mapping)
+      if (reason.ruleId && kpiScores[reason.ruleId] === undefined) {
+        kpiScores[reason.ruleId] = Math.round(reason.matchScore * 100);
+      }
     }
   }
 

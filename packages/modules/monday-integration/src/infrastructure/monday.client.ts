@@ -130,7 +130,7 @@ export class MondayClient {
       query ($boardIds: [ID!], $limit: Int!) {
         boards(ids: $boardIds) {
           id
-          items_page(limit: $limit) {
+          items_page(limit: $limit, query_params: { order_by: [{ column_id: "__creation_log__", direction: desc }] }) {
             items {
               id
               name

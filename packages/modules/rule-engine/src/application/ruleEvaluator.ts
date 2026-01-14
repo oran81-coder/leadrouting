@@ -222,10 +222,15 @@ function calculateCustomScore(
 ): number {
   switch (functionName) {
     case "industryMatch":
-      // Match agent's industry score for lead's industry
-      const industry = context.lead.industry;
+      // Support both 'industry' and 'lead_industry' field names
+      const industry = context.lead.industry || (context.lead as any).lead_industry;
       if (!industry) return 0;
-      const score = context.agent.industryScores[industry];
+
+      // Case-insensitive matching for industry scores
+      const industryLower = industry.toLowerCase();
+      const matchingKey = Object.keys(context.agent.industryScores || {})
+        .find(k => k.toLowerCase() === industryLower);
+      const score = matchingKey ? context.agent.industryScores[matchingKey] : null;
       return score ? score / 100 : 0; // Convert 0-100 to 0-1
 
     case "availabilityScore":
@@ -268,11 +273,39 @@ export function generateExplanation(
       return `${availability}% available (${context.agent.currentActiveLeads} active leads)`;
 
     case "performance":
-      if (context.agent.conversionRate) {
-        const rate = (context.agent.conversionRate * 100).toFixed(1);
-        return `${rate}% conversion rate (${context.agent.totalLeadsConverted}/${context.agent.totalLeadsHandled} deals)`;
+      // 1. Conversion Rate
+      if (rule.id.includes("conversion") || rule.id.includes("performance")) {
+        if (context.agent.conversionRate) {
+          const rate = (context.agent.conversionRate * 100).toFixed(1);
+          return `${rate}% conversion rate (${context.agent.totalLeadsConverted}/${context.agent.totalLeadsHandled} deals)`;
+        }
       }
-      return `Historical performance`;
+
+      // 2. Response Time
+      if (rule.id.includes("response")) {
+        const time = context.agent.avgResponseTime || 0;
+        const minutes = Math.round(time / 60);
+        return `Avg response time: ${minutes}m`;
+      }
+
+      // 3. Time to Close
+      if (rule.id.includes("time_to_close")) {
+        const time = context.agent.avgTimeToClose || 0;
+        const days = (time / 86400).toFixed(1);
+        return `Avg closing speed: ${days} days`;
+      }
+
+      // 4. Deal Size
+      if (rule.id.includes("deal_size")) {
+        const size = Math.round(context.agent.avgDealSize || 0);
+        return `Avg deal size: $${size.toLocaleString()}`;
+      }
+
+      // Fallback
+      if (context.agent.conversionRate) {
+        return `Historical performance match`;
+      }
+      return `Performance metric match`;
 
     case "momentum":
       if (context.agent.hotStreakActive) {

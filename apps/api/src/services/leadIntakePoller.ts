@@ -3,6 +3,8 @@ import { optionalEnv } from "../config/env";
 import { PrismaMetricsConfigRepo } from "../infrastructure/metricsConfig.repo";
 import { PrismaLeadFactRepo } from "../infrastructure/leadFact.repo";
 import { createMondayClientForOrg } from "../../../../packages/modules/monday-integration/src/application/monday.orgClient";
+import { refreshMondayUsersCache } from "../../../../packages/modules/monday-integration/src/application/monday.people";
+import { PrismaMondayUserCacheRepo } from "../../../../packages/modules/monday-integration/src/infrastructure/mondayUserCache.repo";
 import { detectLeadChanges, formatChanges } from "./leadUpdateDetector";
 import { rescoreProposal } from "./proposalRescorer";
 console.log("[LeadIntakePoller] MODULE LOADED SUCCESSFULLY");
@@ -43,7 +45,8 @@ async function saveLeadToFact(
   boardId: string,
   item: any,
   metricsConfig: any,
-  leadRepo: PrismaLeadFactRepo
+  leadRepo: PrismaLeadFactRepo,
+  refreshedUserIds: Set<string>
 ): Promise<void> {
   const columnValues = item.column_values || [];
   const itemId = String(item.id);
@@ -55,6 +58,24 @@ async function saveLeadToFact(
       (cv: any) => String(cv.id) === String(metricsConfig.assignedPeopleColumnId)
     );
     assignedUserId = parsePeopleUserId(peopleColumn);
+
+    // Phase 1.9: Auto-sync unknown users to ensure names are resolved
+    if (assignedUserId) {
+      try {
+        const userCacheRepo = new PrismaMondayUserCacheRepo();
+        const cached = await userCacheRepo.getByUserId(orgId, assignedUserId);
+        if (!cached && !refreshedUserIds.has(assignedUserId)) {
+          console.log(`[LeadIntakePoller] 👤 Unknown user ${assignedUserId} detected in lead ${itemId}. Triggering user cache refresh...`);
+          const mondayClient = await createMondayClientForOrg(orgId);
+          if (mondayClient) {
+            await refreshMondayUsersCache(mondayClient, orgId);
+            refreshedUserIds.add(assignedUserId);
+          }
+        }
+      } catch (cacheErr) {
+        console.warn(`[LeadIntakePoller] ⚠️ Failed to check/refresh user cache for ${assignedUserId}:`, cacheErr);
+      }
+    }
   }
 
   // Extract industry
@@ -228,6 +249,7 @@ export function startLeadIntakePoller() {
       let processedCount = 0;
       let unassignedCount = 0;
       let routingCallCount = 0;
+      const refreshedUserIds = new Set<string>();
 
       for (const b of samples || []) {
         const bid = String((b as any).boardId);
@@ -252,7 +274,7 @@ export function startLeadIntakePoller() {
             const isNewLead = !existing?.enteredAt;
 
             // Always update LeadFact with latest data (handles field updates)
-            await saveLeadToFact(orgId, bid, it, metricsConfig, leadRepo);
+            await saveLeadToFact(orgId, bid, it, metricsConfig, leadRepo, refreshedUserIds);
 
             if (isNewLead) {
               console.log(`[LeadIntakePoller] ✨ New lead saved to LeadFact: ${itemName} (${itemId})`);

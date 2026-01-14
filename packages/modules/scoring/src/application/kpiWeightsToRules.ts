@@ -150,8 +150,8 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       condition: {
         type: "simple",
         field: "agent.avgResponseTime",
-        operator: "greaterThan",
-        value: 0,
+        operator: "notEquals",
+        value: null,
       },
       matchScoreCalculation: {
         type: "inverse_ratio",
@@ -227,10 +227,12 @@ export function convertKPIWeightsToRules(weights: KPIWeights, lead?: any): Scori
       enabled: true,
       category: "expertise",
       condition: {
-        type: "simple",
-        field: "lead.industry",
-        operator: "notEquals",
-        value: null,
+        type: "compound",
+        logic: "OR",
+        conditions: [
+          { type: "simple", field: "lead.industry", operator: "notEquals", value: null },
+          { type: "simple", field: "lead.lead_industry", operator: "notEquals", value: null },
+        ],
       },
       matchScoreCalculation: {
         type: "custom",

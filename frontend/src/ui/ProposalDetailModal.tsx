@@ -66,18 +66,29 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
 
     // Extract from primary reasons
     for (const reason of breakdown.primaryReasons || []) {
-      if (reason.category) {
-        // Prefer metricScore (0-100) if available, fall back to contribution
+      // Prioritize ruleId mapping (more specific) over category mapping
+      if (reason.ruleId) {
         const scoreValue = reason.matchScore !== undefined ? Math.round(reason.matchScore * 100) : Math.round(reason.contribution);
-        kpiScores[reason.category] = scoreValue;
+        kpiScores[reason.ruleId] = scoreValue;
+      } else if (reason.category) {
+        // Fallback to category if ruleId is missing
+        const scoreValue = reason.matchScore !== undefined ? Math.round(reason.matchScore * 100) : Math.round(reason.contribution);
+        if (kpiScores[reason.category] === undefined) {
+          kpiScores[reason.category] = scoreValue;
+        }
       }
     }
 
     // Extract from secondary factors
     for (const factor of breakdown.secondaryFactors || []) {
-      if (factor.category) {
+      if (factor.ruleId) {
         const scoreValue = factor.matchScore !== undefined ? Math.round(factor.matchScore * 100) : Math.round(factor.contribution);
-        kpiScores[factor.category] = scoreValue;
+        kpiScores[factor.ruleId] = scoreValue;
+      } else if (factor.category) {
+        const scoreValue = factor.matchScore !== undefined ? Math.round(factor.matchScore * 100) : Math.round(factor.contribution);
+        if (kpiScores[factor.category] === undefined) {
+          kpiScores[factor.category] = scoreValue;
+        }
       }
     }
 
@@ -230,10 +241,19 @@ export function ProposalDetailModal({ proposal, onClose, onApprove, onReject }: 
                             industryMatch: 'kpi_industry_match',
                             expertise: 'kpi_industry_match',
                             conversionRate: 'kpi_conversion_historical',
-                            performance: 'kpi_recent_performance',
+                            performance: 'kpi_recent_performance', // Fallback for generic performance
                             momentum: 'kpi_hot_streak',
                             hotStreak: 'kpi_hot_streak',
                             responseSpeed: 'kpi_response_time',
+                            // Ensure direct ruleId mapping works too (identity)
+                            kpi_workload: 'kpi_workload',
+                            kpi_conversion_historical: 'kpi_conversion_historical',
+                            kpi_recent_performance: 'kpi_recent_performance',
+                            kpi_response_time: 'kpi_response_time',
+                            kpi_avg_time_to_close: 'kpi_avg_time_to_close',
+                            kpi_avg_deal_size: 'kpi_avg_deal_size',
+                            kpi_industry_match: 'kpi_industry_match',
+                            kpi_hot_streak: 'kpi_hot_streak',
                           };
 
                           // Build a unified score map

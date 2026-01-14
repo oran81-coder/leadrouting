@@ -23,7 +23,7 @@ async function checkRoutingState() {
   console.log(`  rulesVersion: ${routingState.rulesVersion}`);
   console.log(`  enabledAt: ${routingState.enabledAt}`);
 
-  const settings = await prisma.settings.findUnique({
+  const settings = await prisma.routingSettings.findUnique({
     where: { orgId },
   });
 

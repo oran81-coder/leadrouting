@@ -40,6 +40,8 @@ const LoginScreen = lazy(() => import("./LoginScreen").then(m => ({ default: m.L
 const PreviewScreen = lazy(() => import("./PreviewScreen").then(m => ({ default: m.PreviewScreen })));
 const OrganizationSettingsScreen = lazy(() => import("./OrganizationSettingsScreen").then(m => ({ default: m.OrganizationSettingsScreen })));
 
+import { ConnectionStatusStrip } from "./ConnectionStatusStrip";
+
 type MondayStatusDTO = {
   ok: boolean;
   connected: boolean;
@@ -204,11 +206,11 @@ function AdminMetricsSetup() {
     setPickerSearch("");
     try {
       const boardsAll = await listMondayBoards();
-const leadIds = (metricsCfg.leadBoardIds || "")
-  .split(",")
-  .map((x) => x.trim())
-  .filter(Boolean);
-const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(b.id))) : boardsAll;
+      const leadIds = (metricsCfg.leadBoardIds || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(b.id))) : boardsAll;
       setPickerBoards(boards);
       const firstFromCfg = metricsCfg.leadBoardIds?.split(",").map((x) => x.trim()).filter(Boolean)?.[0] ?? "";
       const initial = firstFromCfg || boards?.[0]?.id || "";
@@ -409,25 +411,25 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
         >
           Recalculate now
         </button>
-<button
-  onClick={async () => {
-    setPreviewErr(null);
-    setPreviewResults(null);
-    setPreviewOpen(true);
-    setPreviewLoading(true);
-    try {
-      const out = await previewRouting(previewLimit);
-      setPreviewResults(out.results as any[]);
-    } catch (e: any) {
-      setPreviewErr(e?.message ?? String(e));
-    } finally {
-      setPreviewLoading(false);
-    }
-  }}
-  disabled={saving || !canRun}
->
-  Preview routing
-</button>
+        <button
+          onClick={async () => {
+            setPreviewErr(null);
+            setPreviewResults(null);
+            setPreviewOpen(true);
+            setPreviewLoading(true);
+            try {
+              const out = await previewRouting(previewLimit);
+              setPreviewResults(out.results as any[]);
+            } catch (e: any) {
+              setPreviewErr(e?.message ?? String(e));
+            } finally {
+              setPreviewLoading(false);
+            }
+          }}
+          disabled={saving || !canRun}
+        >
+          Preview routing
+        </button>
 
         {msg ? <span style={{ opacity: 0.9 }}>{msg}</span> : null}
       </div>
@@ -473,209 +475,209 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
               </div>
             ) : null}
 
-      {previewOpen ? (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-          }}
-          onClick={() => {
-            setPreviewOpen(false);
-            setExpandedLeadId(null);
-            setExpandedAgentId(null);
-          }}
-        >
-          <div style={{ width: 900, background: "#fff", borderRadius: 10, padding: 14 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontWeight: 800 }}>Routing Preview (Simulation)</div>
-              <button
-                type="button"
+            {previewOpen ? (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: "rgba(0,0,0,0.45)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 9999,
+                }}
                 onClick={() => {
                   setPreviewOpen(false);
                   setExpandedLeadId(null);
                   setExpandedAgentId(null);
                 }}
               >
-                Close
-              </button>
-            </div>
+                <div style={{ width: 900, background: "#fff", borderRadius: 10, padding: 14 }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontWeight: 800 }}>Routing Preview (Simulation)</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewOpen(false);
+                        setExpandedLeadId(null);
+                        setExpandedAgentId(null);
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
 
-            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>Simulation only. No leads will be assigned or modified.</div>
+                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>Simulation only. No leads will be assigned or modified.</div>
 
-            <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                Leads to preview
-                <select value={previewLimit} onChange={(e) => setPreviewLimit(Number(e.target.value))} disabled={previewLoading} style={{ width: 120 }}>
-                  {[5, 10, 20, 30, 50].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      Leads to preview
+                      <select value={previewLimit} onChange={(e) => setPreviewLimit(Number(e.target.value))} disabled={previewLoading} style={{ width: 120 }}>
+                        {[5, 10, 20, 30, 50].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-              <button
-                type="button"
-                onClick={async () => {
-                  setPreviewErr(null);
-                  setPreviewResults(null);
-                  setPreviewLoading(true);
-                  try {
-                    const out = await previewRouting(previewLimit);
-                    setPreviewResults(out.results as any[]);
-                  } catch (e: any) {
-                    setPreviewErr(e?.message ?? String(e));
-                  } finally {
-                    setPreviewLoading(false);
-                  }
-                }}
-                disabled={previewLoading || !canRun}
-              >
-                Run preview
-              </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setPreviewErr(null);
+                        setPreviewResults(null);
+                        setPreviewLoading(true);
+                        try {
+                          const out = await previewRouting(previewLimit);
+                          setPreviewResults(out.results as any[]);
+                        } catch (e: any) {
+                          setPreviewErr(e?.message ?? String(e));
+                        } finally {
+                          setPreviewLoading(false);
+                        }
+                      }}
+                      disabled={previewLoading || !canRun}
+                    >
+                      Run preview
+                    </button>
 
-              {previewLoading ? <div style={{ fontSize: 12, opacity: 0.8 }}>Loading…</div> : null}
-              {previewErr ? (
-                <div style={{ fontSize: 12, color: "#c0392b" }}>
-                  {previewErr}
-                </div>
-              ) : null}
-            </div>
-
-            <div style={{ marginTop: 12, maxHeight: 520, overflow: "auto", border: "1px solid #eee", borderRadius: 8 }}>
-              {!previewResults ? (
-                <div style={{ padding: 12, fontSize: 13, opacity: 0.8 }}>Run preview to see results.</div>
-              ) : previewResults.length === 0 ? (
-                <div style={{ padding: 12, fontSize: 13, opacity: 0.8 }}>No eligible leads found for preview.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
-                  {(previewResults as any[]).map((r) => (
-                    <div key={r.leadId} style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                        <div style={{ fontWeight: 800 }}>
-                          Lead {r.leadName ? `${r.leadName}` : r.leadId}{" "}
-                          <span style={{ fontWeight: 400, opacity: 0.75 }}>({r.leadId})</span>
-                        </div>
-                        <div style={{ fontSize: 12, opacity: 0.8 }}>
-                          Board: {r.boardName || r.boardId} • Industry: {r.industry || "—"} • Winner:{" "}
-                          <b>{r.winnerAgentName || r.winnerAgentId || "—"}</b>
-                        </div>
+                    {previewLoading ? <div style={{ fontSize: 12, opacity: 0.8 }}>Loading…</div> : null}
+                    {previewErr ? (
+                      <div style={{ fontSize: 12, color: "#c0392b" }}>
+                        {previewErr}
                       </div>
+                    ) : null}
+                  </div>
 
-                      <div style={{ marginTop: 8, borderTop: "1px solid #eee" }} />
+                  <div style={{ marginTop: 12, maxHeight: 520, overflow: "auto", border: "1px solid #eee", borderRadius: 8 }}>
+                    {!previewResults ? (
+                      <div style={{ padding: 12, fontSize: 13, opacity: 0.8 }}>Run preview to see results.</div>
+                    ) : previewResults.length === 0 ? (
+                      <div style={{ padding: 12, fontSize: 13, opacity: 0.8 }}>No eligible leads found for preview.</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
+                        {(previewResults as any[]).map((r) => (
+                          <div key={r.leadId} style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                              <div style={{ fontWeight: 800 }}>
+                                Lead {r.leadName ? `${r.leadName}` : r.leadId}{" "}
+                                <span style={{ fontWeight: 400, opacity: 0.75 }}>({r.leadId})</span>
+                              </div>
+                              <div style={{ fontSize: 12, opacity: 0.8 }}>
+                                Board: {r.boardName || r.boardId} • Industry: {r.industry || "—"} • Winner:{" "}
+                                <b>{r.winnerAgentName || r.winnerAgentId || "—"}</b>
+                              </div>
+                            </div>
 
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 8 }}>
-                        <thead>
-                          <tr style={{ background: "rgba(0,0,0,0.03)" }}>
-                            <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #eee" }}>Rank</th>
-                            <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #eee" }}>Agent</th>
-                            <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #eee" }}>Score</th>
-                            <th style={{ padding: 8, borderBottom: "1px solid #eee" }} />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(r.agents || []).slice(0, 8).map((a: any, idx: number) => (
-                            <React.Fragment key={a.agentUserId || a.agentId || idx}>
-                              <tr>
-                                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{idx + 1}</td>
-                                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{a.agentName || a.agentUserId}</td>
-                                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{typeof a.score === "number" ? a.score.toFixed(2) : a.score}</td>
-                                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const key = String(a.agentUserId || a.agentId || idx);
-                                      if (expandedLeadId === r.leadId && expandedAgentId === key) {
-                                        setExpandedLeadId(null);
-                                        setExpandedAgentId(null);
-                                      } else {
-                                        setExpandedLeadId(r.leadId);
-                                        setExpandedAgentId(key);
-                                      }
-                                    }}
-                                  >
-                                    View
-                                  </button>
-                                </td>
-                              </tr>
-                              {expandedLeadId === r.leadId && expandedAgentId === String(a.agentUserId || a.agentId || idx) ? (
-                                <tr>
-                                  <td colSpan={4} style={{ padding: 10, background: "rgba(0,0,0,0.02)", borderBottom: "1px solid #eee" }}>
-                                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Score breakdown</div>
-                                    <div style={{ overflowX: "auto" }}>
-  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-    <thead>
-      <tr style={{ background: "rgba(0,0,0,0.03)" }}>
-        <th style={{ textAlign: "left", padding: 6, borderBottom: "1px solid #ddd" }}>Variable</th>
-        <th style={{ textAlign: "right", padding: 6, borderBottom: "1px solid #ddd" }}>Weight (%)</th>
-        <th style={{ textAlign: "right", padding: 6, borderBottom: "1px solid #ddd" }}>Points</th>
-      </tr>
-    </thead>
-    <tbody>
-      {(() => {
-        const breakdown = a.breakdown || a.explain || {};
-        const rows = [
-          { key: "industry", label: "Industry fit", weight: metricsCfg.weightIndustryPerf },
-          { key: "conversion", label: "Conversion rate", weight: metricsCfg.weightConversion },
-          { key: "avgDeal", label: "Avg deal size", weight: metricsCfg.weightAvgDeal },
-          { key: "hotStreak", label: "Hot streak", weight: metricsCfg.weightHotStreak },
-          { key: "responseSpeed", label: "Response speed", weight: metricsCfg.weightResponseSpeed },
-          { key: "burnout", label: "Burnout", weight: metricsCfg.weightBurnout },
-          { key: "availabilityCap", label: "Availability / daily cap", weight: metricsCfg.weightAvailabilityCap },
-        ];
+                            <div style={{ marginTop: 8, borderTop: "1px solid #eee" }} />
 
-        // Build a set of used keys, then append any extra keys returned by backend (future-proof)
-        const used = new Set(rows.map((r) => r.key));
-        const extras = Object.keys(breakdown)
-          .filter((k) => !used.has(k))
-          .map((k) => ({ key: k, label: k, weight: undefined as any }));
-
-        const finalRows = [...rows, ...extras].filter((r) => breakdown[r.key] !== undefined);
-
-        return finalRows.map((r) => (
-          <tr key={r.key}>
-            <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{r.label}</td>
-            <td style={{ padding: 6, borderBottom: "1px solid #eee", textAlign: "right" }}>
-              {typeof r.weight === "number" ? r.weight : "—"}
-            </td>
-            <td style={{ padding: 6, borderBottom: "1px solid #eee", textAlign: "right" }}>
-              {typeof breakdown[r.key] === "number" ? Number(breakdown[r.key]).toFixed(2) : String(breakdown[r.key])}
-            </td>
-          </tr>
-        ));
-      })()}
-    </tbody>
-  </table>
-</div>
-                                  </td>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 8 }}>
+                              <thead>
+                                <tr style={{ background: "rgba(0,0,0,0.03)" }}>
+                                  <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #eee" }}>Rank</th>
+                                  <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #eee" }}>Agent</th>
+                                  <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #eee" }}>Score</th>
+                                  <th style={{ padding: 8, borderBottom: "1px solid #eee" }} />
                                 </tr>
-                              ) : null}
-                            </React.Fragment>
-                          ))}
-                        </tbody>
-                      </table>
+                              </thead>
+                              <tbody>
+                                {(r.agents || []).slice(0, 8).map((a: any, idx: number) => (
+                                  <React.Fragment key={a.agentUserId || a.agentId || idx}>
+                                    <tr>
+                                      <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{idx + 1}</td>
+                                      <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{a.agentName || a.agentUserId}</td>
+                                      <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{typeof a.score === "number" ? a.score.toFixed(2) : a.score}</td>
+                                      <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const key = String(a.agentUserId || a.agentId || idx);
+                                            if (expandedLeadId === r.leadId && expandedAgentId === key) {
+                                              setExpandedLeadId(null);
+                                              setExpandedAgentId(null);
+                                            } else {
+                                              setExpandedLeadId(r.leadId);
+                                              setExpandedAgentId(key);
+                                            }
+                                          }}
+                                        >
+                                          View
+                                        </button>
+                                      </td>
+                                    </tr>
+                                    {expandedLeadId === r.leadId && expandedAgentId === String(a.agentUserId || a.agentId || idx) ? (
+                                      <tr>
+                                        <td colSpan={4} style={{ padding: 10, background: "rgba(0,0,0,0.02)", borderBottom: "1px solid #eee" }}>
+                                          <div style={{ fontWeight: 700, marginBottom: 6 }}>Score breakdown</div>
+                                          <div style={{ overflowX: "auto" }}>
+                                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                                              <thead>
+                                                <tr style={{ background: "rgba(0,0,0,0.03)" }}>
+                                                  <th style={{ textAlign: "left", padding: 6, borderBottom: "1px solid #ddd" }}>Variable</th>
+                                                  <th style={{ textAlign: "right", padding: 6, borderBottom: "1px solid #ddd" }}>Weight (%)</th>
+                                                  <th style={{ textAlign: "right", padding: 6, borderBottom: "1px solid #ddd" }}>Points</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {(() => {
+                                                  const breakdown = a.breakdown || a.explain || {};
+                                                  const rows = [
+                                                    { key: "industry", label: "Industry fit", weight: metricsCfg.weightIndustryPerf },
+                                                    { key: "conversion", label: "Conversion rate", weight: metricsCfg.weightConversion },
+                                                    { key: "avgDeal", label: "Avg deal size", weight: metricsCfg.weightAvgDeal },
+                                                    { key: "hotStreak", label: "Hot streak", weight: metricsCfg.weightHotStreak },
+                                                    { key: "responseSpeed", label: "Response speed", weight: metricsCfg.weightResponseSpeed },
+                                                    { key: "burnout", label: "Burnout", weight: metricsCfg.weightBurnout },
+                                                    { key: "availabilityCap", label: "Availability / daily cap", weight: metricsCfg.weightAvailabilityCap },
+                                                  ];
 
-                      {(r.agents || []).length > 8 ? (
-                        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>Showing top 8 agents. (Increase later if needed.)</div>
-                      ) : null}
-                    </div>
-                  ))}
+                                                  // Build a set of used keys, then append any extra keys returned by backend (future-proof)
+                                                  const used = new Set(rows.map((r) => r.key));
+                                                  const extras = Object.keys(breakdown)
+                                                    .filter((k) => !used.has(k))
+                                                    .map((k) => ({ key: k, label: k, weight: undefined as any }));
+
+                                                  const finalRows = [...rows, ...extras].filter((r) => breakdown[r.key] !== undefined);
+
+                                                  return finalRows.map((r) => (
+                                                    <tr key={r.key}>
+                                                      <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{r.label}</td>
+                                                      <td style={{ padding: 6, borderBottom: "1px solid #eee", textAlign: "right" }}>
+                                                        {typeof r.weight === "number" ? r.weight : "—"}
+                                                      </td>
+                                                      <td style={{ padding: 6, borderBottom: "1px solid #eee", textAlign: "right" }}>
+                                                        {typeof breakdown[r.key] === "number" ? Number(breakdown[r.key]).toFixed(2) : String(breakdown[r.key])}
+                                                      </td>
+                                                    </tr>
+                                                  ));
+                                                })()}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ) : null}
+                                  </React.Fragment>
+                                ))}
+                              </tbody>
+                            </table>
+
+                            {(r.agents || []).length > 8 ? (
+                              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>Showing top 8 agents. (Increase later if needed.)</div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>Simulation only. No changes were applied.</div>
                 </div>
-              )}
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>Simulation only. No changes were applied.</div>
-          </div>
-        </div>
-      ) : null}
+              </div>
+            ) : null}
 
 
             <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -873,13 +875,13 @@ export default function App() {
         console.error("Error loading Monday status:", e);
       }
     }
-    
+
     // Load immediately
     loadMondayStatus();
-    
+
     // Refresh every 30 seconds
     const interval = setInterval(loadMondayStatus, 30000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -942,11 +944,11 @@ export default function App() {
     setPickerOpen(true);
     try {
       const boardsAll = await listMondayBoards();
-const leadIds = (metricsCfg.leadBoardIds || "")
-  .split(",")
-  .map((x) => x.trim())
-  .filter(Boolean);
-const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(b.id))) : boardsAll;
+      const leadIds = (metricsCfg.leadBoardIds || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(b.id))) : boardsAll;
       setPickerBoards(boards);
       const firstFromCfg = metricsCfg.leadBoardIds
         ?.split(",")
@@ -1011,181 +1013,142 @@ const boards = leadIds.length ? boardsAll.filter((b) => leadIds.includes(String(
     <NavigationProvider setView={setView}>
       <div style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
         {/* Logo - Centered */}
-        <div style={{ 
-          display: "flex", 
-          justifyContent: "center", 
-          alignItems: "center", 
+        <div style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
           marginBottom: "12px",
           marginTop: "0"
         }}>
-          <img 
-            src="/logo.png" 
-            alt="LeadoRun" 
-            style={{ 
-              height: "70px", 
+          <img
+            src="/logo.png"
+            alt="LeadoRun"
+            style={{
+              height: "70px",
               width: "auto",
               maxWidth: "450px",
-              cursor: "pointer"
+              cursor: "pointer",
+              transform: "scale(2.0)"
             }}
             onClick={() => setView("admin")}
             title="LeadoRun - Lead Routing System"
           />
         </div>
-        
+
         {/* Navigation Buttons */}
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
-          <button 
-            onClick={() => setView("admin")} 
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              view === "admin" 
-                ? "bg-blue-600 text-white" 
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            }`}
+          <button
+            onClick={() => setView("admin")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === "admin"
+              ? "bg-blue-600 text-white"
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}
           >
             Admin
           </button>
-        <button 
-          onClick={() => setView("manager")} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            view === "manager" 
-              ? "bg-blue-600 text-white" 
+          <button
+            onClick={() => setView("manager")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === "manager"
+              ? "bg-blue-600 text-white"
               : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
-        >
-          Manager
-        </button>
-        <button 
-          onClick={() => setView("outcomes")} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            view === "outcomes" 
-              ? "bg-blue-600 text-white" 
-              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
-        >
-          Outcomes
-        </button>
-        <button 
-          onClick={() => setView("mapping")} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            view === "mapping" 
-              ? "bg-blue-600 text-white" 
-              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
-        >
-          Field Mapping
-        </button>
-        <button 
-          onClick={() => setView("performance")} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            view === "performance" 
-              ? "bg-blue-600 text-white" 
-              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
-        >
-          📊 Performance
-        </button>
-        <button 
-          onClick={() => setView("preview")} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            view === "preview" 
-              ? "bg-blue-600 text-white" 
-              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-          }`}
-          title="ראה מה היה קורה אם המערכת הייתה פעילה בעבר"
-        >
-          🔮 Preview
-        </button>
-
-        {/* Organization Settings - only visible to admin users */}
-        {user && user.role === "admin" && (
-          <button 
-            onClick={() => setView("org-settings")} 
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              view === "org-settings" 
-                ? "bg-blue-600 text-white" 
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            }`}
-            title="Manage your organization settings"
+              }`}
           >
-            🏢 Organization
+            Manager
           </button>
-        )}
-        
-        {/* Super Admin button - only visible to super_admin users */}
-        {user && user.role === "super_admin" && (
-          <button 
-            onClick={() => setView("super-admin")} 
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              view === "super-admin" 
-                ? "bg-blue-600 text-white" 
-                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            }`}
+          <button
+            onClick={() => setView("outcomes")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === "outcomes"
+              ? "bg-blue-600 text-white"
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}
           >
-            👑 Super Admin
+            Outcomes
           </button>
-        )}
+          <button
+            onClick={() => setView("mapping")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === "mapping"
+              ? "bg-blue-600 text-white"
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}
+          >
+            Field Mapping
+          </button>
+          <button
+            onClick={() => setView("performance")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === "performance"
+              ? "bg-blue-600 text-white"
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}
+          >
+            📊 Performance
+          </button>
+          <button
+            onClick={() => setView("preview")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === "preview"
+              ? "bg-blue-600 text-white"
+              : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}
+            title="ראה מה היה קורה אם המערכת הייתה פעילה בעבר"
+          >
+            🔮 Preview
+          </button>
 
-        <ThemeToggleButton />
-        <LogoutButton />
-
-        {/* Monday Connection Status Indicator */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-          <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-            Monday:
-          </span>
-          {mondayStatus ? (
-            mondayStatus.connected ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                ✓ Connected
-              </span>
-            ) : (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                ✗ Not Connected
-              </span>
-            )
-          ) : (
-            <span className="text-xs text-gray-500 dark:text-gray-400 animate-pulse">Loading...</span>
+          {/* Organization Settings - only visible to admin users */}
+          {user && user.role === "admin" && (
+            <button
+              onClick={() => setView("org-settings")}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === "org-settings"
+                ? "bg-blue-600 text-white"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                }`}
+              title="Manage your organization settings"
+            >
+              🏢 Organization
+            </button>
           )}
-        </div>
 
-        <div style={{ width: 1, height: 18, background: "#ddd", margin: "0 8px" }} />
+          {/* Super Admin button - only visible to super_admin users */}
+          {user && user.role === "super_admin" && (
+            <button
+              onClick={() => setView("super-admin")}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === "super-admin"
+                ? "bg-blue-600 text-white"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                }`}
+            >
+              👑 Super Admin
+            </button>
+          )}
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          API Base
-          <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} style={{ width: 320 }} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          API Key
-          <input 
-            value={apiKey} 
-            onChange={(e) => setApiKey(e.target.value)} 
-            style={{ width: 220 }} 
-            placeholder="dev_key_123 (auto in dev)"
-            title="Development default: dev_key_123. Change only if using custom API key."
+          <ThemeToggleButton />
+          <LogoutButton />
+
+          <ConnectionStatusStrip
+            mondayStatus={mondayStatus}
+            apiBase={apiBase}
+            setApiBase={setApiBase}
+            apiKey={apiKey}
+            setApiKey={setApiKey}
+            onSave={persistConnection}
+            globalMsg={globalMsg}
           />
-        </label>
-        <button onClick={persistConnection}>Save</button>
-        {globalMsg ? <span style={{ opacity: 0.8 }}>{globalMsg}</span> : null}
         </div>
 
-      <hr style={{ margin: "16px 0" }} />
+        <hr style={{ margin: "16px 0" }} />
 
-      <Suspense fallback={<div className="p-8"><CardSkeleton count={3} /></div>}>
-        {view === "outcomes" && <OutcomesScreen />}
-        {view === "manager" && <ManagerScreen />}
-        {view === "admin" && <AdminScreen />}
-        {view === "mapping" && <FieldMappingWizard />}
-        {view === "performance" && <PerformanceDashboard />}
-        {view === "preview" && <PreviewScreen />}
-        {view === "org-settings" && <OrganizationSettingsScreen />}
-        {view === "super-admin" && <SuperAdminDashboard />}
-        {view === "register" && <OrgRegistrationPage />}
-      </Suspense>
+        <Suspense fallback={<div className="p-8"><CardSkeleton count={3} /></div>}>
+          {view === "outcomes" && <OutcomesScreen />}
+          {view === "manager" && <ManagerScreen />}
+          {view === "admin" && <AdminScreen />}
+          {view === "mapping" && <FieldMappingWizard />}
+          {view === "performance" && <PerformanceDashboard />}
+          {view === "preview" && <PreviewScreen />}
+          {view === "org-settings" && <OrganizationSettingsScreen />}
+          {view === "super-admin" && <SuperAdminDashboard />}
+          {view === "register" && <OrgRegistrationPage />}
+        </Suspense>
 
-      {/* OLD ADMIN CODE - TO BE REMOVED
+        {/* OLD ADMIN CODE - TO BE REMOVED
       {view === "admin" ? (
         <div>
           <h2 style={{ marginTop: 0 }}>Admin – Monday Connection + Metrics Wizard</h2>

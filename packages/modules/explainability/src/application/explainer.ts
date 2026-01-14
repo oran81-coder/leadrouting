@@ -45,10 +45,12 @@ export interface ExplanationBreakdown {
   primaryReasons: ExplanationReason[];    // Top 3 contributing factors
   secondaryFactors: ExplanationReason[];  // Next 2-3 factors
   gatingSummary?: string;                 // Why some agents were excluded
+  allKpiScores?: Record<string, number>;  // All evaluated KPI scores (0-100)
 }
 
 export interface ExplanationReason {
   ruleName: string;
+  ruleId?: string;       // Added for precise UI mapping
   matchScore: number;    // Raw score (0-1)
   contribution: number;  // Points contributed
   explanation: string;   // Human-readable
@@ -151,6 +153,7 @@ function generateBreakdown(
     .slice(0, 3)
     .map(r => ({
       ruleName: r.ruleName,
+      ruleId: r.ruleId,
       matchScore: r.matchScore,
       contribution: Math.round(r.contribution),
       explanation: enhanceExplanation(r.explanation, lead, agent),
@@ -163,6 +166,7 @@ function generateBreakdown(
     .filter(r => r.contribution > 1) // Only meaningful contributions
     .map(r => ({
       ruleName: r.ruleName,
+      ruleId: r.ruleId,
       matchScore: r.matchScore,
       contribution: Math.round(r.contribution),
       explanation: enhanceExplanation(r.explanation, lead, agent),
@@ -175,10 +179,17 @@ function generateBreakdown(
     ? `${ineligible} agent(s) excluded due to capacity or eligibility constraints`
     : undefined;
 
+  // Map all evaluated rules to kpiScores for UI
+  const allKpiScores: Record<string, number> = {};
+  score.ruleContributions.results.forEach(r => {
+    allKpiScores[r.ruleId] = Math.round(r.matchScore * 100);
+  });
+
   return {
     primaryReasons,
     secondaryFactors,
     gatingSummary,
+    allKpiScores,
   };
 }
 
@@ -443,4 +454,3 @@ export function formatExplanationForDisplay(explanation: RoutingExplanation): st
 
   return lines.join("\n");
 }
-
