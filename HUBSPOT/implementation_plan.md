@@ -76,8 +76,10 @@ graph TD
 ### Stage 4: Admin & Mapping Wizard Evolution
 *Estimated Effort: Medium*
 ### 1. Initial CRM Selection & Login Flow
-- **CRM Selection Screen**: Update the initial setup/login flow to present a "Choose Your CRM" screen.
+- **Replaces Current Login**: The existing "Sign in with Monday.com" screen (see screenshot below) will be evolved into a Provider Selection screen.
 - **Provider Toggles**: Big, visual buttons for **[Connect Monday.com]** and **[Connect HubSpot]**.
+- **Mockup Design**:
+![CRM Selection Mockup](file:///c:/Users/oran8/Desktop/leadrouting/lead-routing-phase1-FULL-latest-rebuilt-FIX3-smokefix/lead-routing-skeleton-node-ts/HUBSPOT/assets/crm_selection_mockup.png)
 - **Onboarding Logic**:
   - Once a provider is selected, the system triggers the specific OAuth flow (Monday or HubSpot).
   - The selection is saved in the `Organization` table under `activeProvider`.

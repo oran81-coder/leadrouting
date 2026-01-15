@@ -13,6 +13,7 @@ The approved plan includes:
 - **HubSpot Module**: Implementing a new package for HubSpot-specific logic.
 - **Intake Strategy**: Supporting both Polling and Webhooks for HubSpot Leads.
 - **Login & Onboarding**: A new "CRM Selection" screen at the start of the flow to choose between Monday and HubSpot.
+![CRM Selection Mockup](file:///c:/Users/oran8/Desktop/leadrouting/lead-routing-phase1-FULL-latest-rebuilt-FIX3-smokefix/lead-routing-skeleton-node-ts/HUBSPOT/assets/crm_selection_mockup.png)
 - **Admin UI**: Generalizing the Field Mapping Wizard for HubSpot Properties.
 
 ## 3. Professional Standards & Reliability
