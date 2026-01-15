@@ -11,7 +11,8 @@ I have completed the technical planning for integrating HubSpot into the Lead Ro
 The approved plan includes:
 - **Refactoring Stage**: Transitioning to a Provider-Based Architecture.
 - **HubSpot Module**: Implementing a new package for HubSpot-specific logic.
-- **Intake Strategy**: Supporting both Polling and Webhooks for HubSpot Deals.
+- **Intake Strategy**: Supporting both Polling and Webhooks for HubSpot Leads.
+- **Login & Onboarding**: A new "CRM Selection" screen at the start of the flow to choose between Monday and HubSpot.
 - **Admin UI**: Generalizing the Field Mapping Wizard for HubSpot Properties.
 
 ## 3. Professional Standards & Reliability

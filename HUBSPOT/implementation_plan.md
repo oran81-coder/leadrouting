@@ -75,13 +75,13 @@ graph TD
 
 ### Stage 4: Admin & Mapping Wizard Evolution
 *Estimated Effort: Medium*
-### 1. Multi-Source Configuration & Wizard Reuse
-- **Consistent UX**: The system will **reuse the existing multi-step Mapping Wizard** UI.
-- **Provider-Aware Steps**:
-  - **Step 1**: Load "HubSpot Objects" (Deals/Contacts) instead of Monday Boards.
-  - **Step 2/3**: Load "HubSpot Properties" instead of Monday Columns.
-  - **Step 4**: Load "Deal Stages" instead of Monday Statuses.
-- **Toggle**: A simple CRM selector at the beginning of the Wizard to switch between Monday and HubSpot.
+### 1. Initial CRM Selection & Login Flow
+- **CRM Selection Screen**: Update the initial setup/login flow to present a "Choose Your CRM" screen.
+- **Provider Toggles**: Big, visual buttons for **[Connect Monday.com]** and **[Connect HubSpot]**.
+- **Onboarding Logic**:
+  - Once a provider is selected, the system triggers the specific OAuth flow (Monday or HubSpot).
+  - The selection is saved in the `Organization` table under `activeProvider`.
+- **Consistent Wizard UX**: After connection, the same Mapping Wizard is used, but dynamically populated based on the choice.
 2. **Success Metrics for HubSpot**:
    - Define "Closed Won" logic for HubSpot (e.g., `dealstage = 'closedwon'`).
 
