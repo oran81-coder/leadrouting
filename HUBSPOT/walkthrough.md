@@ -23,6 +23,7 @@ The approved plan includes:
 ## 4. Final Business Decisions
 - **Primary Object**: **HubSpot Leads** (Sales Workspace).
 - **Routing Trigger**: Immediate assignment upon entry to ensure reps are notified early.
+- **Logic Continuity**: **100% Guaranteed**. The Rule Agent, KPI scoring, and Routing Engine remain identical and untouched. HubSpot is simply a new "Data Source" that feeds into the existing, proven engine.
 - **Data Mapping**: Full parity with Monday.com fields (Source, Owner, Amount, Industry, Status).
 - **Sales Workspace Support**: Routed leads will appear in the reps' Prospecting/Sales view as "Open leads".
 - **Status Logic**: Full parity for "Won", "Lost", and "Excluded" leads via HubSpot Lead Status mapping.

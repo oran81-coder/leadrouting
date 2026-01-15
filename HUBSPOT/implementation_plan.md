@@ -159,6 +159,16 @@ For HubSpot, we will map "Internal Stages" to system logic:
 
 ---
 
+## 🔒 Logic Continuity Guarantee (Rule Agent)
+> [!IMPORTANT]
+> A core requirement of this integration is that **all routing logic, scoring, and rule evaluation remain 100% identical**.
+> 
+> ### How we ensure this:
+> 1. **Data Normalization Layer**: The HubSpot module's only job is to fetch data and normalize it into the existing `InternalSchema`. 
+> 2. **Rule Engine Isolation**: The `rule-engine` and `routing-engine` packages remain "Black Boxes". They receive a `NormalizedLead` object and don't know (or care) if it came from Monday or HubSpot.
+> 3. **Shared KPI Logic**: Agent profiles and KPI calculations (Conversion Rate, Response Time, etc.) continue to use the same logic in `agent-profiling`, as they operate on `LeadFact` records which are now provider-agnostic.
+> 4. **Identical Rule Execution**: Both Monday and HubSpot leads will be processed by the exact same `RoutingEngine.execute()` call with the exact same `RuleSetVersion`.
+
 ## User Review Required
 > [!IMPORTANT]
 > **Primary Object Selection**: Following your feedback, the system will prioritize the **HubSpot Leads object** (Sales Hub) for initial routing.
